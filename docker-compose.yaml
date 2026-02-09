@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    volumes:
+      - ./src:/app/src
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./sessions:/app/sessions
+    env_file:
+      - .env
+    environment:
+      - DB__URL=postgresql+asyncpg://olmas:password@db/olmas_db
+    depends_on:
+      - db
+    command: start
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: olmas
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: olmas_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:

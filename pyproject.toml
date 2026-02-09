@@ -1,0 +1,61 @@
+[project]
+name = "olmas-kashey"
+version = "0.1.0"
+description = "Telegram user-account automation for discovering relevant public groups."
+authors = [
+    { name = "User", email = "user@example.com" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "groq>=0.5.0",
+    "rapidfuzz>=3.9.0",
+    "telethon>=1.36.0",
+    "sqlalchemy[asyncio]>=2.0.31",
+    "alembic>=1.13.2",
+    "pydantic>=2.8.2",
+    "pydantic-settings>=2.3.4",
+    "loguru>=0.7.2",
+    "aiosqlite>=0.20.0",
+    "typer>=0.12.3",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501"] # Ignore line length in favor of black/formatter
+target-version = "py39"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
