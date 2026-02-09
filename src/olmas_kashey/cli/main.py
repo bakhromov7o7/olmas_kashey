@@ -309,12 +309,17 @@ def continuous_search(
                                 
                                 # Try to join
                                 try:
+                                    # Use random delay for safety
+                                    import random
+                                    from olmas_kashey.core.settings import settings
+                                    wait_time = random.uniform(settings.discovery.join_delay_min, settings.discovery.join_delay_max)
+                                    typer.echo(f"  ⏳ Waiting {wait_time:.1f}s (safety delay) before join...")
+                                    await asyncio.sleep(wait_time)
+                                    
                                     typer.echo(f"  ➕ Attempting to join...")
-                                    await asyncio.sleep(2)
                                     await client.join_channel(best["username"] or best["chat_id"])
                                     
-                                    # Refresh/Create entity and membership records (pipeline._cache_entity handles part of this)
-                                    # But let's ensure state is updated
+                                    # Refresh/Create entity and membership records
                                     await pipeline._cache_entity(best["entity"])
                                     
                                     # Re-fetch internal ID
@@ -350,7 +355,11 @@ def continuous_search(
                     except Exception as e:
                         typer.secho(f"  ⚠️ Pipeline error: {e}", fg=typer.colors.YELLOW)
                     
-                    await asyncio.sleep(delay)
+                    # Add jitter to the standard delay
+                    import random
+                    jitter = random.uniform(0.8, 1.2)
+                    actual_delay = delay * jitter
+                    await asyncio.sleep(actual_delay)
                 
                 # Variations for next round
                 if not sig_handler.check_shutdown:
@@ -498,6 +507,73 @@ def status() -> None:
     asyncio.run(_check())
 
 
+@app.command("sync-groups")
+def sync_groups() -> None:
+    """
+    Sync all groups your account has already joined into the local database.
+    """
+    async def _run():
+        from olmas_kashey.db.session import get_db
+        from olmas_kashey.db.models import Entity, Membership, MembershipState, EntityKind
+        from sqlalchemy import select
+        from datetime import datetime, timezone
+        
+        client = OlmasClient()
+        await client.start()
+        
+        total_synced = 0
+        total_updated = 0
+        
+        try:
+            telegram_groups = await client.get_joined_groups()
+            
+            async for session in get_db():
+                for tg_entity in telegram_groups:
+                    # 1. Check/Create Entity
+                    stmt = select(Entity).where(Entity.tg_id == tg_entity.id)
+                    res = await session.execute(stmt)
+                    db_entity = res.scalar_one_or_none()
+                    
+                    if not db_entity:
+                        db_entity = Entity(
+                            tg_id=tg_entity.id,
+                            username=tg_entity.username,
+                            title=tg_entity.title,
+                            kind="channel" if getattr(tg_entity, 'broadcast', False) else "group"
+                        )
+                        session.add(db_entity)
+                        await session.flush() # Get ID
+                        total_synced += 1
+                    
+                    # 2. Check/Update Membership
+                    stmt = select(Membership).where(Membership.entity_id == db_entity.id)
+                    res = await session.execute(stmt)
+                    mem = res.scalar_one_or_none()
+                    
+                    if not mem:
+                        mem = Membership(
+                            entity_id=db_entity.id,
+                            state=MembershipState.JOINED,
+                            joined_at=datetime.now(timezone.utc)
+                        )
+                        session.add(mem)
+                    elif mem.state != MembershipState.JOINED:
+                        mem.state = MembershipState.JOINED
+                        mem.joined_at = datetime.now(timezone.utc)
+                        total_updated += 1
+                
+                await session.commit()
+                
+            typer.echo(f"\n✅ Sync Complete!")
+            typer.echo(f"   New groups added: {total_synced}")
+            typer.echo(f"   Existing memberships updated: {total_updated}")
+            
+        finally:
+            await client.stop()
+
+    asyncio.run(_run())
+
+
 @app.command("broadcast")
 def broadcast(
     message: str = typer.Argument(..., help="Message to send to all joined groups"),
@@ -532,10 +608,20 @@ def broadcast(
                 for entity in joined_entities:
                     target = entity.username or entity.tg_id
                     try:
+                        # Use random delay for safety
+                        import random
+                        from olmas_kashey.core.settings import settings
+                        wait_time = random.uniform(settings.discovery.message_delay_min, settings.discovery.message_delay_max)
+                        typer.echo(f"  ⏳ Waiting {wait_time:.1f}s (safety delay) before message...")
+                        await asyncio.sleep(wait_time)
+
                         typer.echo(f"  📤 Sending to: {entity.title or target}...")
                         await client.send_message(target, message)
                         total_sent += 1
-                        await asyncio.sleep(delay)
+                        
+                        # Add incremental jitter delay
+                        jitter = random.uniform(1.0, 3.0)
+                        await asyncio.sleep(jitter)
                     except Exception as e:
                         typer.secho(f"  ❌ Failed to send to {target}: {e}", fg=typer.colors.RED)
                         total_failed += 1
@@ -547,7 +633,10 @@ def broadcast(
         finally:
             await client.stop()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        typer.echo("\n🛑 Broadcast stopped by user.")
 
 
 if __name__ == "__main__":

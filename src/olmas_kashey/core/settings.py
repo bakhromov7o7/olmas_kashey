@@ -29,13 +29,41 @@ class TelegramSettings(BaseSettings):
         v.mkdir(parents=True, exist_ok=True)
         return v
 
+class TelegramRateLimitSettings(BaseSettings):
+    concurrency: int = Field(default=2, ge=1, description="Max concurrent Telegram requests")
+    default_interval_seconds: float = Field(default=1.0, ge=0, description="Default minimum interval between requests")
+    search_interval_seconds: float = Field(default=2.0, ge=0, description="Min interval for search requests")
+    resolve_interval_seconds: float = Field(default=2.0, ge=0, description="Min interval for resolve requests")
+    join_interval_seconds: float = Field(default=8.0, ge=0, description="Min interval for join requests")
+    participant_interval_seconds: float = Field(default=5.0, ge=0, description="Min interval for participant requests")
+    message_interval_seconds: float = Field(default=3.0, ge=0, description="Min interval for message requests")
+    dialogs_interval_seconds: float = Field(default=5.0, ge=0, description="Min interval for dialogs requests")
+    flood_jitter_seconds: float = Field(default=2.0, ge=0, description="Jitter added to FloodWait sleeps")
+    backoff_base_seconds: float = Field(default=2.0, ge=0, description="Base seconds for exponential backoff")
+    backoff_max_seconds: float = Field(default=60.0, ge=0, description="Max seconds for exponential backoff")
+
 class DatabaseSettings(BaseSettings):
     url: str = Field(default="sqlite+aiosqlite:///./olmas_kashey.db", description="Database Connection URL")
 
 class DiscoverySettings(BaseSettings):
     rate_limit_per_second: float = Field(default=1.0, description="Rate limit for discovery requests")
-    keyword_batch_size: int = Field(default=5, description="Number of keywords to process in a batch")
-    batch_interval_seconds: int = Field(default=60, description="Interval between batches")
+    keyword_batch_size: int = Field(default=10, description="Number of keywords to process in a batch")
+    batch_interval_seconds: int = Field(default=120, description="Interval between batches")
+    max_query_variants: int = Field(default=25, description="Max expanded search queries per discovery")
+    max_results_per_query: int = Field(default=15, description="Max results per search query")
+    max_ranked_candidates: int = Field(default=20, description="Max ranked candidates to return")
+    min_confidence: float = Field(default=0.45, ge=0, le=1, description="Minimum confidence to return a candidate")
+    high_confidence: float = Field(default=0.75, ge=0, le=1, description="High confidence threshold to accept best match")
+    allow_channels: bool = Field(default=False, description="Whether to include channels in discovery results")
+    query_cache_ttl_seconds: int = Field(default=21600, ge=0, description="TTL for query cache in seconds")
+    negative_cache_ttl_seconds: int = Field(default=900, ge=0, description="TTL for negative query cache in seconds")
+    entity_cache_ttl_seconds: int = Field(default=86400, ge=0, description="TTL for entity cache in seconds")
+    
+    # Safety & Human-like behavior
+    join_delay_min: int = Field(default=20, description="Min seconds to wait before joining")
+    join_delay_max: int = Field(default=45, description="Max seconds to wait before joining")
+    message_delay_min: int = Field(default=15, description="Min seconds to wait between messages")
+    message_delay_max: int = Field(default=35, description="Max seconds to wait between messages")
     
     # Allowlist
     allowed_topics: List[str] = Field(default=["ielts", "uzbekistan", "tashkent"], description="Whitelisted topics/keywords")
@@ -88,6 +116,7 @@ class Settings(BaseSettings):
     log_level: LogLevel = Field(default=LogLevel.INFO)
 
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    telegram_limits: TelegramRateLimitSettings = Field(default_factory=TelegramRateLimitSettings)
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     discovery: DiscoverySettings = Field(default_factory=DiscoverySettings)
     service: ServiceSettings = Field(default_factory=ServiceSettings)
@@ -96,4 +125,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

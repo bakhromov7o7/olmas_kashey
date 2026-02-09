@@ -19,13 +19,14 @@ from olmas_kashey.core.types import EntityKind
 from olmas_kashey.db.models import Entity, SearchRun, Event, Membership, MembershipState
 from olmas_kashey.db.session import get_db
 from olmas_kashey.telegram.client import OlmasClient
-from olmas_kashey.telegram.entity_classifier import EntityClassifier
+from olmas_kashey.services.discovery_pipeline import DiscoveryPipeline
 from olmas_kashey.services.query_plan import QueryPlanner
 
 class GroupDiscoveryService:
     def __init__(self, client: OlmasClient, planner: QueryPlanner):
         self.client = client
         self.planner = planner
+        self.pipeline = DiscoveryPipeline(client)
 
     async def run(self, iterations: int = 1) -> None:
         """
@@ -52,7 +53,7 @@ class GroupDiscoveryService:
             # 1. Search
             # We assume client.search_public_channels returns a list of Telethon entities (Channel/Chat)
             # The client wrapper we wrote earlier has this method.
-            raw_entities = await self.client.search_public_channels(keyword, limit=50)
+            candidates = await self.pipeline.search_candidates(keyword)
             
             # 2. Process Results
             processed_count = 0
@@ -64,12 +65,9 @@ class GroupDiscoveryService:
                 # Per-item upsert is safer for long runs, but batch is faster.
                 # Let's do batch upsert logic.
                 
-                for raw in raw_entities:
+                for candidate in candidates:
                     # Filter scam/fake
-                    if getattr(raw, "scam", False) or getattr(raw, "fake", False):
-                        continue
-
-                    classified = EntityClassifier.classify(raw)
+                    classified = candidate.entity
                     
                     if classified.kind != EntityKind.GROUP:
                         continue

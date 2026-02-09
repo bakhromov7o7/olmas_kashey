@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
 from olmas_kashey.services.group_discovery import GroupDiscoveryService
 from olmas_kashey.core.types import EntityKind
+from olmas_kashey.services.discovery_pipeline import Candidate
 from olmas_kashey.telegram.entity_classifier import ClassifiedEntity
 
 @pytest.mark.asyncio
@@ -11,23 +12,11 @@ async def test_process_keyword_success():
     mock_client = AsyncMock()
     mock_planner = AsyncMock()
     
-    # Mock search results
-    # We need raw entities that classifier expects.
-    # Logic: client returns raw list -> classifier.classify(raw) -> Entity
-    # We can mock classifier OR mock raw entities to satisfy classifier.
-    # GroupDiscoveryService imports EntityClassifier.
-    # Easier to mock client returning objects that Classifier handles or mock Classifier.classify?
-    # Classifier is static method `classify`. Hard to mock static on class usage inside function without patch.
-    # Let's patch EntityClassifier.classify.
-    
     from unittest.mock import patch
     
-    with patch("olmas_kashey.services.group_discovery.EntityClassifier.classify") as mock_classify:
-        # Setup mocks
+    with patch("olmas_kashey.services.group_discovery.DiscoveryPipeline.search_candidates", new_callable=AsyncMock) as mock_search_candidates:
         mock_result_entity = ClassifiedEntity(EntityKind.GROUP, 12345, "Test Group", "testgroup")
-        mock_classify.return_value = mock_result_entity
-        
-        mock_client.search_public_channels.return_value = ["some_raw_obj"]
+        mock_search_candidates.return_value = [Candidate(mock_result_entity)]
         
         # Mock DB
         # GroupDiscoveryService uses `async for session in get_db():`
@@ -46,8 +35,7 @@ async def test_process_keyword_success():
             await service._process_keyword("test_keyword")
             
             # Assertions
-            mock_client.search_public_channels.assert_called_once_with("test_keyword", limit=50)
-            mock_classify.assert_called_once_with("some_raw_obj")
+            mock_search_candidates.assert_called_once_with("test_keyword")
             
             # Check session.add called for New Entity, Event, Membership, SearchRun
             assert mock_session.add.call_count >= 4 
