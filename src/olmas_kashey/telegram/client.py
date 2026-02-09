@@ -75,6 +75,12 @@ class OlmasClient:
         return await self.client.get_entity(entity)
 
     @handle_flood_wait
+    async def send_message(self, entity: Union[str, int, TypeInputPeer], message: str) -> None:
+        logger.info(f"Sending message to {entity}")
+        await self.client.send_message(entity, message)
+        logger.info(f"Message sent to {entity}")
+
+    @handle_flood_wait
     async def check_membership(self, entity: Union[int, str]) -> str:
         """
         Check membership status of the current user in the given channel/group.

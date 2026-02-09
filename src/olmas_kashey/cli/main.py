@@ -498,5 +498,57 @@ def status() -> None:
     asyncio.run(_check())
 
 
+@app.command("broadcast")
+def broadcast(
+    message: str = typer.Argument(..., help="Message to send to all joined groups"),
+    delay: int = typer.Option(5, help="Delay between messages in seconds"),
+) -> None:
+    """
+    Send a message to all groups where the account is currently joined.
+    """
+    async def _run():
+        from olmas_kashey.db.session import get_db
+        from olmas_kashey.db.models import Entity, Membership, MembershipState
+        from sqlalchemy import select
+        
+        client = OlmasClient()
+        await client.start()
+        
+        total_sent = 0
+        total_failed = 0
+        
+        try:
+            async for session in get_db():
+                stmt = select(Entity).join(Membership).where(Membership.state == MembershipState.JOINED)
+                res = await session.execute(stmt)
+                joined_entities = res.scalars().all()
+                
+                if not joined_entities:
+                    typer.echo("ℹ️ No joined groups found to broadcast to.")
+                    return
+                
+                typer.echo(f"📢 Starting broadcast to {len(joined_entities)} groups...")
+                
+                for entity in joined_entities:
+                    target = entity.username or entity.tg_id
+                    try:
+                        typer.echo(f"  📤 Sending to: {entity.title or target}...")
+                        await client.send_message(target, message)
+                        total_sent += 1
+                        await asyncio.sleep(delay)
+                    except Exception as e:
+                        typer.secho(f"  ❌ Failed to send to {target}: {e}", fg=typer.colors.RED)
+                        total_failed += 1
+                        
+            typer.echo(f"\n📊 Broadcast Summary:")
+            typer.echo(f"   Successfully sent: {total_sent}")
+            typer.echo(f"   Failed: {total_failed}")
+            
+        finally:
+            await client.stop()
+
+    asyncio.run(_run())
+
+
 if __name__ == "__main__":
     app()
