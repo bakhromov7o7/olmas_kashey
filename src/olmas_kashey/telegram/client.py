@@ -38,7 +38,7 @@ class OlmasClient:
             str(settings.telegram.session_dir / settings.telegram.session_name),
             settings.telegram.api_id, 
             settings.telegram.api_hash,
-            proxy=settings.proxy.url if settings.proxy.enabled else None
+            proxy=settings.proxy.formatted_proxy()
         )
 
     async def start(self) -> None:

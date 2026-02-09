@@ -63,4 +63,57 @@ python -m olmas_kashey.cli.main scan --keywords "ielts" --limit 10
 - **Linting:** `ruff check .`
 - **Type Checking:** `mypy .`
 - **Testing:** `pytest`
-# olmas_kashey
+# Olmas Kashey 🚀
+
+AI-powered Telegram group discovery and automation tool.
+
+## 🛠 O'rnatish va Sozlash (Setup)
+
+Do'stingiz yoki boshqa foydalanuvchilar loyihani ishlatishi uchun quyidagi bosqichlarni bajarishlari kerak:
+
+### 1. Python va Loyihani ko'chirib olish
+- Kompyuterda Python 3.9+ o'rnatilgan bo'lishi kerak.
+- Loyihani clone qiling:
+  ```bash
+  git clone https://github.com/bakhromov7o7/olmas_kashey.git
+  cd olmas_kashey
+  ```
+
+### 2. Virtual Muhit va Kutubxonalar
+Virtual muhit yarating va kerakli kutubxonalarni o'rnating:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+### 3. Konfiguratsiya (.env)
+`.env.example` faylini `.env` deb nusxalang va ichini to'ldiring:
+```bash
+cp .env.example .env
+```
+Fayl ichida quyidagilar bo'lishi shart:
+- `TELEGRAM__API_ID` & `TELEGRAM__API_HASH`: [my.telegram.org](https://my.telegram.org) manzilidan olinadi.
+- `GROQ__API_KEY`: AI keyword generatsiyasi uchun [Groq Cloud](https://console.groq.com/) kaliti.
+
+### 4. Ma'lumotlar bazasini ishga tushirish
+Dasturni birinchi marta ishlatishdan oldin bazani yaratib oling:
+```bash
+python -m olmas_kashey init-db
+```
+
+## 🚀 Ishlatish (Usage)
+
+### Continuous Search (AI-Powered)
+AI orqali guruhlarni qidirish va avtomatik join bo'lish:
+```bash
+python -m olmas_kashey continuous-search --topic "ielts" --delay 10
+```
+
+### Xususiyatlari:
+- **Robust Discovery**: Emojilar va xato yozilgan nomlarni ham fuzzy-matching orqali topadi.
+- **AI Keywords**: Groq LLM yordamida har xil variatsiyadagi qidiruv so'zlarini yaratadi.
+- **Auto-Join**: Topilgan guruhlarga avtomatik a'zo bo'ladi (confidence score yuqori bo'lsa).
+
+---
+**Muallif:** @Bakhromov7o7

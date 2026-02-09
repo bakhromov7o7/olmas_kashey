@@ -48,6 +48,28 @@ class ProxySettings(BaseSettings):
     url: Optional[AnyHttpUrl] = Field(default=None, description="Proxy URL for Telegram client")
     enabled: bool = Field(default=False, description="Enable proxy")
 
+    def formatted_proxy(self) -> Optional[dict]:
+        if not self.enabled or not self.url:
+            return None
+        
+        # Telethon/python-socks expected format
+        proxy_type = self.url.scheme
+        if "socks5" in proxy_type:
+            ptype = "socks5"
+        elif "socks4" in proxy_type:
+            ptype = "socks4"
+        else:
+            ptype = "http"
+            
+        return {
+            'proxy_type': ptype,
+            'addr': self.url.host,
+            'port': self.url.port,
+            'username': self.url.username,
+            'password': self.url.password,
+            'rdns': True
+        }
+
 class GroqSettings(BaseSettings):
     api_key: str = Field(..., description="GROQ API Key")
     model: str = Field(default="llama-3.3-70b-versatile", description="GROQ Model")
