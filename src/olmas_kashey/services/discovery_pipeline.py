@@ -94,8 +94,8 @@ class DiscoveryPipeline:
             except Exception as e:
                 attempts.append({"type": "resolve", "target": explicit_handle, "status": "failed", "error": str(e)})
 
-        candidates = await self._search_candidates(queries, attempts)
-        ranked = self._rank_candidates(queries, keyword_tokens, candidates)
+        candidates, used_queries = await self._search_candidates_with_early_stop(queries, keyword_tokens, attempts)
+        ranked = self._rank_candidates(used_queries, keyword_tokens, candidates)
 
         if not ranked:
             return {
@@ -212,6 +212,38 @@ class DiscoveryPipeline:
             except Exception as e:
                 attempts.append({"type": "search", "query": query, "status": "failed", "error": str(e)})
         return candidates
+
+    async def _search_candidates_with_early_stop(
+        self,
+        queries: List[str],
+        keyword_tokens: List[str],
+        attempts: List[Dict[str, Any]]
+    ) -> Tuple[List[Candidate], List[str]]:
+        candidates: List[Candidate] = []
+        seen_ids = set()
+        used_queries: List[str] = []
+        for query in queries:
+            try:
+                results = await self.client.search_public_channels(query, limit=self.max_results_per_query)
+                for raw in results:
+                    if getattr(raw, "scam", False) or getattr(raw, "fake", False):
+                        continue
+                    classified = self._classify_cached(raw)
+                    if not self._is_allowed_kind(classified.kind):
+                        continue
+                    tg_id = int(classified.tg_id)
+                    if tg_id in seen_ids:
+                        continue
+                    candidates.append(Candidate(entity=classified, about=getattr(raw, "about", None)))
+                    seen_ids.add(tg_id)
+                attempts.append({"type": "search", "query": query, "status": "success", "results": len(results)})
+            except Exception as e:
+                attempts.append({"type": "search", "query": query, "status": "failed", "error": str(e)})
+            used_queries.append(query)
+            ranked = self._rank_candidates(used_queries, keyword_tokens, candidates)
+            if ranked and ranked[0]["score"] >= self.high_confidence_threshold:
+                return candidates, used_queries
+        return candidates, used_queries
 
     def _rank_candidates(self, queries: List[str], keyword_tokens: List[str], candidates: List[Candidate]) -> List[Dict[str, Any]]:
         query_norms = [self._normalize_query(q) for q in queries if q]
