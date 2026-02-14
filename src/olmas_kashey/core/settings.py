@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import List, Optional
-from pydantic import Field, AnyHttpUrl, PostgresDsn, field_validator
+from pydantic import Field, AnyUrl, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from enum import Enum
 
@@ -75,7 +75,7 @@ class ServiceSettings(BaseSettings):
     enable_auto_join: bool = Field(default=True, description="Whether to auto-join classified groups")
 
 class ProxySettings(BaseSettings):
-    url: Optional[AnyHttpUrl] = Field(default=None, description="Proxy URL for Telegram client")
+    url: Optional[AnyUrl] = Field(default=None, description="Proxy URL for Telegram client")
     enabled: bool = Field(default=False, description="Enable proxy")
 
     def formatted_proxy(self) -> Optional[dict]:
