@@ -129,23 +129,25 @@ class OlmasClient:
         raise errors.FloodWaitError(seconds=60)
 
     async def _sleep(self, seconds: float):
-        """Sleep that respects bot pause and shutdown signals."""
+        """Sleep that respects bot pause and shutdown signals using absolute time."""
         if not self.bot:
             await asyncio.sleep(seconds)
             return
 
-        # Check pause before starting
-        await self.bot.wait_if_paused()
+        end_time = asyncio.get_running_loop().time() + seconds
         
-        # Split sleep into chunks to check pause/shutdown regularly
-        chunk = 2.0
-        elapsed = 0.0
-        while elapsed < seconds:
+        while True:
+            # Check pause/resume
             await self.bot.wait_if_paused()
             
-            to_sleep = min(chunk, seconds - elapsed)
-            await asyncio.sleep(to_sleep)
-            elapsed += to_sleep
+            now = asyncio.get_running_loop().time()
+            remaining = end_time - now
+            
+            if remaining <= 0:
+                break
+            
+            # Sleep in short bursts to remain responsive to pause/resume
+            await asyncio.sleep(min(2.0, remaining))
 
     async def search_public_channels(self, query: str, limit: int = 10) -> List[Union[Channel, Chat]]:
         key = f"{query.strip().lower()}|{limit}"

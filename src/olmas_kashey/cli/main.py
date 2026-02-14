@@ -168,14 +168,19 @@ async def _monitor() -> None:
             
             # Wait for delay OR until resume if paused
             total_sleep = 0
-            while total_sleep < cycle_delay and not sig_handler.check_shutdown:
+            end_sleep_time = asyncio.get_running_loop().time() + cycle_delay
+            
+            while not sig_handler.check_shutdown:
                 if bot_service:
                     await bot_service.wait_if_paused()
                 
-                sleep_chunk = min(10, cycle_delay - total_sleep)
-                if await sig_handler.sleep(sleep_chunk):
+                now = asyncio.get_running_loop().time()
+                remaining = end_sleep_time - now
+                
+                if remaining <= 0:
                     break
-                total_sleep += sleep_chunk
+                    
+                await sig_handler.sleep(min(10, remaining))
                 
     except Exception as e:
         logger.exception("Engine failure")
