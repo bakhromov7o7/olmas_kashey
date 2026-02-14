@@ -141,6 +141,7 @@ class ControlBotService:
                 return
             
             buttons = [
+                [Button.inline("10 minut", b"pause_time_10"), Button.inline("20 minut", b"pause_time_20")],
                 [Button.inline("30 minut", b"pause_time_30"), Button.inline("1 soat", b"pause_time_60")],
                 [Button.inline("3 soat", b"pause_time_180"), Button.inline("6 soat", b"pause_time_360")],
                 [Button.inline("12 soat", b"pause_time_720")],
