@@ -39,7 +39,8 @@ class ControlBotService:
         self.bot_client = TelegramClient(
             'bot_session', 
             settings.telegram.api_id, 
-            settings.telegram.api_hash
+            settings.telegram.api_hash,
+            proxy=settings.proxy.formatted_proxy()
         )
         
         await self.bot_client.start(bot_token=settings.telegram.bot_token)
@@ -144,7 +145,7 @@ class ControlBotService:
             ]
             await event.edit("Qancha vaqtga pauza qilmoqchisiz?", buttons=buttons)
 
-        @self.bot_client.on(events.CallbackQuery(data=re.compile(b'^pause_time_(\d+)$')))
+        @self.bot_client.on(events.CallbackQuery(data=re.compile(br'^pause_time_(\d+)$')))
         async def pause_time_handler(event):
             if not await self._check_auth(event):
                 return
