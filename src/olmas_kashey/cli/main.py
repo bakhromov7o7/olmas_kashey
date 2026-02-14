@@ -11,6 +11,7 @@ from olmas_kashey.services.query_plan import QueryPlanner
 from olmas_kashey.services.membership_monitor import MembershipMonitor
 from olmas_kashey.services.health_monitor import HealthMonitor
 from olmas_kashey.core.signal_handler import SignalHandler
+from olmas_kashey.core.settings import settings
 
 app = typer.Typer(help="Olmas Kashey - Telegram User Automation")
 
@@ -41,7 +42,7 @@ async def _scan(keywords: List[str], limit: int) -> None:
     # Better: Add `process_keyword` to public API of service and use it.
     
     client = OlmasClient()
-    planner = QueryPlanner() # fallback
+    planner = QueryPlanner()
     service = GroupDiscoveryService(client, planner)
     
     await client.start()
@@ -62,13 +63,17 @@ def run_discovery(
     Run the discovery pipeline for N keywords from the planner.
     """
     async def _run():
+        from olmas_kashey.core.signal_handler import SignalHandler
+        sig_handler = SignalHandler()
+        sig_handler.install()
+
         client = OlmasClient()
         planner = QueryPlanner()
         service = GroupDiscoveryService(client, planner)
         
         await client.start()
         try:
-            await service.run(iterations=limit)
+            await service.run(iterations=limit, sig_handler=sig_handler)
         finally:
             await client.stop()
 
@@ -80,89 +85,108 @@ def start() -> None:
     """
     Start the automation daemon (monitor, discovery, health check).
     """
-    async def _runner():
-        # Setup Services
-        client = OlmasClient()
-        manager = Manager(client) # wait, Manager removed?
-        # Re-check imports/usage.
-        # Manager was removed in previous steps. 
-        # But `_monitor` function uses `GroupDiscoveryService` now.
-        # This is `start` command calling `_monitor`.
-        # I should replace `_monitor` function content actually, or rewrite `_runner` here completely if I inline it.
-        # But `start` calls `asyncio.run(_monitor())`.
-        pass
-
-    # The current `start` calls `_monitor`. I should update `_monitor`.
-    pass
+    try:
+        asyncio.run(_monitor())
+    except KeyboardInterrupt:
+        typer.secho("\n🛑 Automation stopped by user.", fg=typer.colors.YELLOW)
 
 async def _monitor() -> None:
-    # Setup Signal Handler
+    """
+    Continuous automation engine.
+    Orchestrates discovery, membership, and health monitoring.
+    """
+    from olmas_kashey.core.signal_handler import SignalHandler
+    from olmas_kashey.services.health_monitor import HealthMonitor
+    from olmas_kashey.services.membership import MembershipService
+    from olmas_kashey.services.membership_monitor import MembershipMonitor
+    from olmas_kashey.services.group_discovery import GroupDiscoveryService
+    from olmas_kashey.services.query_plan import QueryPlanner
+    from olmas_kashey.services.control_bot import ControlBotService
+    
+    # 1. Setup
     sig_handler = SignalHandler()
     sig_handler.install()
 
-    client = OlmasClient()
+    # 0. Bot Setup (Initialized early to pass to Client)
+    # We pass None as client initially, then set it once client is created
+    bot_service = ControlBotService()
+    bot_task = None
+    if settings.telegram.bot_token:
+        bot_task = asyncio.create_task(bot_service.start())
+
+    client = OlmasClient(bot=bot_service)
+    bot_service.client = client # Link them back
+    
     planner = QueryPlanner()
-    discovery_service = GroupDiscoveryService(client, planner)
-    # MembershipMonitor
+    discovery_service = GroupDiscoveryService(client, planner, bot=bot_service)
+    membership_service = MembershipService(client)
     membership_monitor = MembershipMonitor(client)
-    # HealthMonitor
     health_monitor = HealthMonitor(client)
     
+    typer.secho("🏗️  Olmas Kashey Automation Engine Starting...", fg=typer.colors.CYAN, bold=True)
     await client.start()
     
     try:
-        logger.info("Starting monitor loop...")
+        iteration = 1
         while not sig_handler.check_shutdown:
-            # 0. Check Health (Restricted Mode)
+            typer.secho(f"\n--- Cycle {iteration} ---", fg=typer.colors.BRIGHT_BLACK, bold=True)
+            
+            if bot_service: 
+                await bot_service.wait_if_paused()
+
+            # 2. Health Check
+            typer.echo("🩺 Checking account health...")
             is_healthy = await health_monitor.check_health()
             if not is_healthy:
-                logger.warning("System in RESTRICTED MODE. Pausing sensitive operations.")
-                # We can still run read-only checks if safe, but usually best to pause all.
-                # Maybe run membership check if it's considered safe (read-only)?
-                # "continue only safe read-only tasks if possible"
-                # Searching public groups is read-only but might be flagged if spamming search.
-                # Membership check is read-only (GetParticipant).
-                # Let's Skip Discovery, allow Membership Check with caution?
-                # Or just pause everything to be safe.
-                # User said: "pause discovery and join operations", "continue only safe read-only tasks"
-                
-                # Membership Check
-                await membership_monitor.run(once=True)
-                
-                # Sleep and continue
-                await asyncio.sleep(300) 
-                continue
-
-            # 1. Run Discovery
-            # Process 1 keyword per cycle
-            await discovery_service.run(iterations=1)
-
-            # 2. Join/Maintain Groups (Future)
-            # await membership_service.process_joins()
-            
-            # 3. Membership Monitor (Periodic)
-            # Run once per cycle? Or check interval?
-            # MembershipMonitor has internal loop logic but we want to step it here.
-            # We can use `run(once=True)`
-            await membership_monitor.run(once=True)
-
-            # Sleep logic
-            interval = 60 # 1 min
-            logger.info(f"Monitor cycle complete. Sleeping for {interval}s...")
-            
-            # Sleep with signal check
-            for _ in range(interval):
-                if sig_handler.check_shutdown:
+                typer.secho(f"⚠️  Account Restricted: {health_monitor.restriction_reason}", fg=typer.colors.RED, bold=True)
+                typer.echo("⏸️  Automation paused for 1 hour...")
+                if await sig_handler.sleep(3600):
                     break
-                await asyncio.sleep(1)
+                continue
+            
+            if bot_service: await bot_service.wait_if_paused()
+
+            # 3. Membership Verification
+            typer.echo("👀 Verifying status of joined groups...")
+            await membership_monitor.check_all()
+
+            if bot_service: await bot_service.wait_if_paused()
+
+            # 4. Process Pending Joins
+            typer.echo("👥 Processing pending joins from allowlist...")
+            await membership_service.process_joins()
+
+            # 5. Group Discovery
+            if bot_service: await bot_service.wait_if_paused()
+            typer.echo("🔍 Running discovery cycle...")
+            await discovery_service.run(iterations=2, sig_handler=sig_handler)
+
+            # 6. Global Cycle Delay
+            iteration += 1
+            cycle_delay = settings.service.scheduler_interval_minutes * 60
+            typer.secho(f"🏁 Cycle complete. Sleeping {cycle_delay}s...", fg=typer.colors.BRIGHT_BLACK)
+            
+            # Wait for delay OR until resume if paused
+            total_sleep = 0
+            while total_sleep < cycle_delay and not sig_handler.check_shutdown:
+                if bot_service:
+                    await bot_service.wait_if_paused()
                 
-    except asyncio.CancelledError:
-        logger.info("Monitor task cancelled.")
+                sleep_chunk = min(10, cycle_delay - total_sleep)
+                if await sig_handler.sleep(sleep_chunk):
+                    break
+                total_sleep += sleep_chunk
+                
     except Exception as e:
-        logger.critical(f"Critical error in monitor loop: {e}")
+        logger.exception("Engine failure")
+        typer.secho(f"🔥 Engine Error: {e}", fg=typer.colors.RED, bold=True)
     finally:
-        logger.info("Stopping client...")
+        if bot_task:
+            await bot_service.stop()
+            bot_task.cancel()
         await client.stop()
+        typer.echo("🔌 Disconnected.")
+@app.command()
 
 
 @app.command()
@@ -186,7 +210,6 @@ def plan(
 @app.command()
 def run_monitor(
     once: bool = typer.Option(False, "--once", help="Run a single pass and exit"),
-    daemon: bool = typer.Option(False, "--daemon", help="Run in a continuous loop (default behavior if --once not specified)")
 ) -> None:
     """
     Run the membership monitor to verify status of joined groups.
@@ -197,40 +220,21 @@ def run_monitor(
         
         await client.start()
         try:
-            # If daemon flag is explicit or once is False (default), loop. 
-            # But the service `run` method handles loop if `once=False`.
-            # So we just pass `once` flag.
-            # Behavior: 
-            # --once -> once=True
-            # --daemon -> once=False
-            # default -> once=False (daemon)
-            
-            # If both are False (default), run as daemon.
-            is_once = once
-            
-            await monitor.run(once=is_once)
+            await monitor.run(once=once)
         finally:
             await client.stop()
 
     asyncio.run(_run())
 
 
-@app.command()
-def start() -> None:
-    """
-    Start the automation daemon (monitor and auto-join).
-    """
-    asyncio.run(_monitor())
-
-
 @app.command("continuous-search")
 def continuous_search(
-    topic: str = typer.Option("education", help="Topic for AI keyword generation"),
-    delay: int = typer.Option(5, help="Delay between searches in seconds"),
+    topic: str = typer.Option(..., "--topic", "-t", help="Topic or keyword to start searching"),
+    delay: int = typer.Option(120, "--delay", "-d", help="Delay between search cycles in seconds"),
+    no_ai: bool = typer.Option(False, "--no-ai", help="Disable AI keyword expansion, only search the topic itself")
 ) -> None:
     """
-    AI-powered continuous group search with fuzzy matching.
-    Uses DiscoveryPipeline to find best candidates even with noisy AI output.
+    Start a continuous search for a topic (AI-powered or direct).
     """
     async def _run():
         from olmas_kashey.services.ai_keyword_generator import AIKeywordGenerator
@@ -254,115 +258,134 @@ def continuous_search(
         keywords_used = set()
         
         try:
-            typer.echo("🚀 Robust AI-powered continuous search started!")
+            typer.echo(f"🚀 {'Direct' if no_ai else 'AI-powered'} continuous search started!")
             typer.echo(f"📝 Topic: {topic}")
             typer.echo("⏹️  Press Ctrl+C to stop\n")
             
             while not sig_handler.check_shutdown:
-                typer.echo("🤖 Generating keywords with AI...")
-                keywords = ai_gen.generate_keywords(topic=topic, count=10)
+                # 1. Prepare keywords starting with the topic itself
+                batch = [topic]
+                if not no_ai:
+                    typer.echo("🤖 Generating related keywords with AI...")
+                    data = await ai_gen.generate_keywords(topic=topic, count=10)
+                    if data:
+                        # Combine keywords and usernames
+                        batch.extend(data.get("usernames", []))
+                        batch.extend(data.get("keywords", []))
                 
-                if not keywords:
-                    typer.echo("⚠️  Failed to generate keywords, using fallback...")
-                    keywords = ["ielts", "uzbekistan education"]
+                # 2. Filter keywords
+                if no_ai:
+                    batch = [topic]
+                else:
+                    batch = [k for k in batch if k.lower() not in keywords_used]
+                    for k in batch: keywords_used.add(k.lower())
+
+                if not batch:
+                    if no_ai:
+                        # In no-ai mode, we just re-search the topic after the delay
+                        batch = [topic]
+                    else:
+                        typer.echo("💤 No new related keywords from AI. Waiting for next cycle...")
                 
-                for keyword in keywords:
-                    if sig_handler.check_shutdown:
-                        break
-                    
-                    if keyword in keywords_used:
-                        continue
-                    keywords_used.add(keyword)
-                    
-                    typer.echo(f"\n🔍 Processing: '{keyword}'")
-                    
-                    try:
-                        # Use discovery pipeline instead of raw search
-                        result = await pipeline.discover(keyword)
+                if batch:
+                    for keyword in batch:
+                        if sig_handler.check_shutdown:
+                            break
                         
-                        if result["status"] == "not_found":
-                            typer.echo(f"  ❌ No good candidates found for '{keyword}'")
-                            continue
+                        typer.echo(f"\n🔍 Processing: '{keyword}'")
                         
-                        best = result["best"]
-                        typer.echo(f"  🎯 Found best match: {best['title']} (@{best['username'] or 'no-username'}) [Score: {best['score']}]")
-                        
-                        total_groups_found += 1
-                        
-                        # Auto-join if confidence is enough
-                        if best["score"] >= 0.7:
-                            async for session in get_db():
-                                # Check if already joined
-                                from sqlalchemy import select
-                                stmt = select(Entity).where(Entity.tg_id == int(best["chat_id"]))
-                                res = await session.execute(stmt)
-                                entity = res.scalar_one_or_none()
-                                
-                                # If entity exists, check membership
-                                if entity:
-                                    stmt = select(Membership).where(Membership.entity_id == entity.id)
-                                    res = await session.execute(stmt)
-                                    mem = res.scalar_one_or_none()
-                                    if mem and mem.state == MembershipState.JOINED:
-                                        typer.echo(f"  ℹ️ Already joined: {best['title']}")
-                                        continue
-                                
-                                # Try to join
-                                try:
-                                    # Use random delay for safety
-                                    import random
-                                    from olmas_kashey.core.settings import settings
-                                    wait_time = random.uniform(settings.discovery.join_delay_min, settings.discovery.join_delay_max)
-                                    typer.echo(f"  ⏳ Waiting {wait_time:.1f}s (safety delay) before join...")
-                                    await asyncio.sleep(wait_time)
-                                    
-                                    typer.echo(f"  ➕ Attempting to join...")
-                                    await client.join_channel(best["username"] or best["chat_id"])
-                                    
-                                    # Refresh/Create entity and membership records
-                                    await pipeline._cache_entity(best["entity"])
-                                    
-                                    # Re-fetch internal ID
+                        try:
+                            # Use discovery pipeline instead of raw search
+                            result = await pipeline.discover(keyword)
+                            
+                            if result["status"] == "not_found":
+                                typer.echo(f"  ❌ No good candidates found for '{keyword}'")
+                                continue
+                            
+                            best = result["best"]
+                            typer.echo(f"  🎯 Found best match: {best['title']} (@{best['username'] or 'no-username'}) [Score: {best['score']}]")
+                            
+                            total_groups_found += 1
+                            
+                            # Auto-join if confidence is enough
+                            if best["score"] >= 0.7:
+                                async for session in get_db():
+                                    # Check if already joined
+                                    from sqlalchemy import select
                                     stmt = select(Entity).where(Entity.tg_id == int(best["chat_id"]))
                                     res = await session.execute(stmt)
-                                    entity = res.scalar_one()
+                                    entity = res.scalar_one_or_none()
                                     
-                                    # Update membership
-                                    stmt = select(Membership).where(Membership.entity_id == entity.id)
-                                    res = await session.execute(stmt)
-                                    mem = res.scalar_one()
+                                    # If entity exists, check membership
+                                    if entity:
+                                        stmt = select(Membership).where(Membership.entity_id == entity.id)
+                                        res = await session.execute(stmt)
+                                        mem = res.scalar_one_or_none()
+                                        if mem and mem.state == MembershipState.JOINED:
+                                            typer.echo(f"  ℹ️ Already joined: {best['title']}")
+                                            continue
                                     
-                                    mem.state = MembershipState.JOINED
-                                    mem.joined_at = datetime.now(timezone.utc)
-                                    total_joined += 1
-                                    
-                                    typer.secho(f"  ✅ Successfully joined!", fg=typer.colors.GREEN)
-                                    
-                                    # Emit join event
-                                    join_event = Event(
-                                        entity_id=entity.id,
-                                        type="robust_auto_joined",
-                                        payload={"source_keyword": keyword, "score": best["score"]}
-                                    )
-                                    session.add(join_event)
-                                    await session.commit()
-                                    
-                                except Exception as join_err:
-                                    typer.secho(f"  ❌ Join failed: {join_err}", fg=typer.colors.RED)
-                        else:
-                            typer.echo(f"  ⚠️ Confidence too low ({best['score']}), skipping auto-join.")
-                            
-                    except Exception as e:
-                        typer.secho(f"  ⚠️ Pipeline error: {e}", fg=typer.colors.YELLOW)
-                    
-                    # Add jitter to the standard delay
-                    import random
-                    jitter = random.uniform(0.8, 1.2)
-                    actual_delay = delay * jitter
-                    await asyncio.sleep(actual_delay)
-                
-                # Variations for next round
+                                    # Try to join
+                                    try:
+                                        # Use random delay for safety
+                                        import random
+                                        from olmas_kashey.core.settings import settings
+                                        wait_time = random.uniform(settings.discovery.join_delay_min, settings.discovery.join_delay_max)
+                                        typer.echo(f"  ⏳ Waiting {wait_time:.1f}s (safety delay) before join...")
+                                        if await sig_handler.sleep(wait_time):
+                                            break
+                                        
+                                        typer.echo(f"  ➕ Attempting to join...")
+                                        await client.join_channel(best["username"] or best["chat_id"])
+                                        
+                                        # Refresh/Create entity and membership records
+                                        await pipeline._cache_entity(best["entity"])
+                                        
+                                        # Re-fetch internal ID
+                                        stmt = select(Entity).where(Entity.tg_id == int(best["chat_id"]))
+                                        res = await session.execute(stmt)
+                                        entity = res.scalar_one()
+                                        
+                                        # Update membership
+                                        stmt = select(Membership).where(Membership.entity_id == entity.id)
+                                        res = await session.execute(stmt)
+                                        mem = res.scalar_one()
+                                        
+                                        mem.state = MembershipState.JOINED
+                                        mem.joined_at = datetime.now(timezone.utc)
+                                        total_joined += 1
+                                        
+                                        typer.secho(f"  ✅ Successfully joined!", fg=typer.colors.GREEN)
+                                        
+                                        # Emit join event
+                                        join_event = Event(
+                                            entity_id=entity.id,
+                                            type="robust_auto_joined",
+                                            payload={"source_keyword": keyword, "score": best["score"]}
+                                        )
+                                        session.add(join_event)
+                                        await session.commit()
+                                        
+                                    except Exception as join_err:
+                                        typer.secho(f"  ❌ Join failed: {join_err}", fg=typer.colors.RED)
+                            else:
+                                typer.echo(f"  ⚠️ Confidence too low ({best['score']}), skipping auto-join.")
+                                
+                        except Exception as e:
+                            typer.secho(f"  ⚠️ Pipeline error: {e}", fg=typer.colors.YELLOW)
+                        
+                        # Add jitter to the search delay
+                        import random
+                        jitter = random.uniform(0.8, 1.2)
+                        from olmas_kashey.core.settings import settings
+                        actual_delay = settings.telegram_limits.search_interval_seconds * jitter
+                        if await sig_handler.sleep(actual_delay):
+                            break
+                # 3. Wait before next cycle
                 if not sig_handler.check_shutdown:
+                    typer.echo(f"\n🏁 Cycle complete. Waiting {delay}s for next batch...")
+                    if await sig_handler.sleep(delay):
+                        break
                     await asyncio.sleep(5)
                     
         except asyncio.CancelledError:
@@ -637,6 +660,86 @@ def broadcast(
         asyncio.run(_run())
     except KeyboardInterrupt:
         typer.echo("\n🛑 Broadcast stopped by user.")
+
+
+@app.command()
+def search(
+    keyword: str = typer.Argument(..., help="Specific keyword or username to search for")
+) -> None:
+    """
+    Perform a direct, one-off search for a specific keyword or username.
+    No AI expansion, just direct discovery.
+    """
+    async def _run():
+        from olmas_kashey.core.signal_handler import SignalHandler
+        sig_handler = SignalHandler()
+        sig_handler.install()
+
+        client = OlmasClient()
+        pipeline = DiscoveryPipeline(client)
+        
+        await client.start()
+        try:
+            typer.echo(f"🔍 Direct search for: '{keyword}'...")
+            result = await pipeline.discover(keyword)
+            
+            if result["status"] == "not_found":
+                typer.secho(f"❌ No good candidates found for '{keyword}'", fg=typer.colors.RED)
+                return
+            
+            best = result["best"]
+            typer.secho(f"🎯 Found best match: {best['title']} (@{best['username'] or 'no-username'})", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"   Score: {best['score']}")
+            typer.echo(f"   Chat ID: {best['chat_id']}")
+            
+            if best["score"] >= 0.7:
+                confirm = typer.confirm(f"Do you want to join '{best['title']}'?")
+                if confirm:
+                    typer.echo("➕ Attempting to join...")
+                    await client.join_channel(best["username"] or best["chat_id"])
+                    await pipeline._cache_entity(best["entity"])
+                    typer.secho("✅ Joined successfully!", fg=typer.colors.GREEN)
+            
+        finally:
+            await client.stop()
+
+    asyncio.run(_run())
+
+
+@app.command()
+def reset(
+    force: bool = typer.Option(False, "--force", "-f", help="Force reset without confirmation")
+) -> None:
+    """
+    Reset all discovered data (entities, memberships, search runs, events).
+    WARNING: This will permanently delete all collected data.
+    """
+    if not force:
+        confirm = typer.confirm("Are you sure you want to delete all discovered data? This cannot be undone.")
+        if not confirm:
+            typer.echo("Aborted.")
+            return
+
+    async def _reset():
+        from olmas_kashey.db.session import get_db
+        from olmas_kashey.db.models import Entity, Membership, SearchRun, Event, KeywordUsage
+        from sqlalchemy import delete
+        
+        async for session in get_db():
+            try:
+                logger.info("Resetting data...")
+                await session.execute(delete(Event))
+                await session.execute(delete(Membership))
+                await session.execute(delete(Entity))
+                await session.execute(delete(SearchRun))
+                await session.execute(delete(KeywordUsage))
+                await session.commit()
+                typer.secho("✅ Data reset successfully.", fg=typer.colors.GREEN)
+            except Exception as e:
+                logger.error(f"Failed to reset data: {e}")
+                typer.secho(f"❌ Reset failed: {e}", fg=typer.colors.RED)
+
+    asyncio.run(_reset())
 
 
 if __name__ == "__main__":

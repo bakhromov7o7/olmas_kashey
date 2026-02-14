@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from olmas_kashey.core.settings import settings
 
@@ -21,24 +21,48 @@ from olmas_kashey.db.session import get_db
 from olmas_kashey.telegram.client import OlmasClient
 from olmas_kashey.services.discovery_pipeline import DiscoveryPipeline
 from olmas_kashey.services.query_plan import QueryPlanner
+from olmas_kashey.services.control_bot import TopicsChangedInterruption
 
 class GroupDiscoveryService:
-    def __init__(self, client: OlmasClient, planner: QueryPlanner):
+    def __init__(self, client: OlmasClient, planner: QueryPlanner, bot: Optional[Any] = None):
         self.client = client
         self.planner = planner
-        self.pipeline = DiscoveryPipeline(client)
+        self.pipeline = DiscoveryPipeline(client, bot=bot)
+        self.bot = bot
 
-    async def run(self, iterations: int = 1) -> None:
+    async def run(self, iterations: int = 1, sig_handler: Optional[Any] = None) -> None:
         """
         Execute discovery pipeline for N iterations (keywords).
         """
-        for _ in range(iterations):
+        for i in range(iterations):
+            if sig_handler and sig_handler.check_shutdown:
+                break
+            
+            if self.bot:
+                await self.bot.wait_if_paused()
+
             keyword = await self.planner.get_next_query()
             if not keyword:
                 logger.info("No query available (rate limit or cooldown). Stopping discovery run.")
                 break
             
-            await self._process_keyword(keyword)
+            try:
+                await self._process_keyword(keyword)
+            except TopicsChangedInterruption:
+                logger.info("Topic change detected during discovery. Re-planning...")
+                if self.bot:
+                    self.bot.topics_updated = False
+                continue
+            
+            # Add batch delay between iterations to be more human-like
+            if i < iterations - 1:
+                delay = settings.discovery.batch_interval_seconds
+                logger.info(f"Iteration {i+1} complete. Waiting {delay}s before next batch...")
+                if sig_handler:
+                    if await sig_handler.sleep(delay):
+                        break
+                else:
+                    await asyncio.sleep(delay)
 
     async def _process_keyword(self, keyword: str) -> None:
         logger.info(f"Processing keyword: '{keyword}'")
@@ -66,6 +90,9 @@ class GroupDiscoveryService:
                 # Let's do batch upsert logic.
                 
                 for candidate in candidates:
+                    if self.bot:
+                        await self.bot.wait_if_paused()
+
                     # Filter scam/fake
                     classified = candidate.entity
                     
@@ -149,6 +176,9 @@ class GroupDiscoveryService:
                 
             logger.info(f"Finished keyword '{keyword}': {processed_count} groups found.")
 
+        except TopicsChangedInterruption:
+            # Re-raise to be caught by run() loop
+            raise
         except Exception as e:
             logger.error(f"Error processing keyword '{keyword}': {e}")
             run_record.finished_at = datetime.now(timezone.utc)

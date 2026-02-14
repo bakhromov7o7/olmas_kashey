@@ -21,9 +21,8 @@ class QueryPlanner:
         self._keyword_cache: Optional[List[str]] = None
 
     def _get_keywords(self) -> List[str]:
-        if self._keyword_cache is None:
-            self._keyword_cache = list(self.generator.generate())
-        return self._keyword_cache
+        # Always generate fresh to respect settings.discovery.allowed_topics changes
+        return list(self.generator.generate())
 
     async def get_next_query(self) -> Optional[str]:
         """
@@ -56,7 +55,11 @@ class QueryPlanner:
                 usage = result.scalar_one_or_none()
 
                 if usage:
-                    if now - usage.last_used_at < self.cooldown:
+                    last_used = usage.last_used_at
+                    if last_used.tzinfo is None:
+                        last_used = last_used.replace(tzinfo=timezone.utc)
+                        
+                    if now - last_used < self.cooldown:
                         continue # Cooling down
                     
                     # Ready to use again

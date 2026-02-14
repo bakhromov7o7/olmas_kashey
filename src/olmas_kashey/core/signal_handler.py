@@ -31,6 +31,23 @@ class SignalHandler:
     def add_handler(self, handler: Callable[[], Awaitable[None]]):
         self._handlers.append(handler)
         
+    async def wait(self):
+        """Wait until the shutdown signal is received."""
+        await self._shutdown_event.wait()
+
+    async def sleep(self, seconds: float) -> bool:
+        """
+        Wait for 'seconds' or until shutdown is requested.
+        Returns True if shutdown was requested, False if timeout reached.
+        """
+        if self.check_shutdown:
+            return True
+        try:
+            await asyncio.wait_for(self._shutdown_event.wait(), timeout=seconds)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
     @property
     def check_shutdown(self) -> bool:
         return self._shutdown_event.is_set()

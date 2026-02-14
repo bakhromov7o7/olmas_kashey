@@ -42,7 +42,8 @@ class RequestLimiter:
 
 
 class OlmasClient:
-    def __init__(self, client: Optional[TelegramClient] = None) -> None:
+    def __init__(self, client: Optional[TelegramClient] = None, bot: Optional[Any] = None) -> None:
+        self.bot = bot
         self.client = client or TelegramClient(
             str(settings.telegram.session_dir / settings.telegram.session_name),
             settings.telegram.api_id,
@@ -72,49 +73,79 @@ class OlmasClient:
         await self.client.disconnect()
         logger.info("Telegram Client Disconnected")
 
+    def is_connected(self) -> bool:
+        return self.client and self.client.is_connected()
+
     def _next_backoff(self) -> float:
         base = settings.telegram_limits.backoff_base_seconds
         max_s = settings.telegram_limits.backoff_max_seconds
+        # Exponential backoff: base * 2^level
         wait = min(max_s, base * (2 ** self._flood_backoff_level))
         self._flood_backoff_level = min(self._flood_backoff_level + 1, 10)
-        jitter = random.uniform(0, base)
+        # Add jitter 0-25%
+        jitter = random.uniform(0, wait * 0.25)
         return wait + jitter
 
-    def _is_flood_like_error(self, err: errors.RPCError) -> bool:
+    def _is_flood_like_error(self, err: Exception) -> bool:
         msg = str(err).upper()
-        return "FLOOD" in msg or "TOO MANY" in msg or "429" in msg
+        return any(x in msg for x in ["FLOOD", "TOO MANY", "429", "SLOW_DOWN", "LIMIT_REACHED"])
 
     async def _call(self, method: str, fn: Callable[[], Awaitable[R]], args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> R:
+        max_attempts = 3
         attempt = 0
-        while True:
+        while attempt < max_attempts:
             try:
                 result = await self._limiter.run(method, fn)
-                self._flood_backoff_level = 0
+                self._flood_backoff_level = 0  # Reset on success
                 return result
             except errors.FloodWaitError as e:
-                wait_time = e.seconds + random.uniform(0, settings.telegram_limits.flood_jitter_seconds)
-                logger.warning(f"FloodWaitError: sleeping for {wait_time:.2f}s")
-                if attempt >= 1:
-                    raise
+                wait_time = e.seconds + random.uniform(1, settings.telegram_limits.flood_jitter_seconds + 1)
+                logger.warning(f"FloodWaitError: sleeping for {wait_time:.2f}s (Attempt {attempt+1}/{max_attempts})")
+                
+                if self.bot and hasattr(self.bot, 'notify_flood_wait'):
+                    asyncio.create_task(self.bot.notify_flood_wait(wait_time))
+
                 attempt += 1
-                await asyncio.sleep(wait_time)
-            except errors.PeerFloodError:
+                if attempt >= max_attempts:
+                    raise
+                await self._sleep(wait_time)
+            except (errors.PeerFloodError, errors.FloodError) as e:
                 wait_time = self._next_backoff()
-                logger.warning(f"PeerFloodError: backing off for {wait_time:.2f}s")
-                if attempt >= 1:
-                    raise
+                logger.warning(f"FloodError: backing off for {wait_time:.2f}s (Attempt {attempt+1}/{max_attempts})")
                 attempt += 1
-                await asyncio.sleep(wait_time)
-            except errors.RPCError as e:
+                if attempt >= max_attempts:
+                    raise
+                await self._sleep(wait_time)
+            except Exception as e:
                 if self._is_flood_like_error(e):
                     wait_time = self._next_backoff()
-                    logger.warning(f"RPC flood-like error: backing off for {wait_time:.2f}s")
-                    if attempt >= 1:
-                        raise
+                    logger.warning(f"Flood-like error ({type(e).__name__}): backing off for {wait_time:.2f}s (Attempt {attempt+1}/{max_attempts})")
                     attempt += 1
-                    await asyncio.sleep(wait_time)
+                    if attempt >= max_attempts:
+                        raise
+                    await self._sleep(wait_time)
                 else:
                     raise
+        raise errors.FloodWaitError(seconds=60)
+
+    async def _sleep(self, seconds: float):
+        """Sleep that respects bot pause and shutdown signals."""
+        if not self.bot:
+            await asyncio.sleep(seconds)
+            return
+
+        # Check pause before starting
+        await self.bot.wait_if_paused()
+        
+        # Split sleep into chunks to check pause/shutdown regularly
+        chunk = 2.0
+        elapsed = 0.0
+        while elapsed < seconds:
+            await self.bot.wait_if_paused()
+            
+            to_sleep = min(chunk, seconds - elapsed)
+            await asyncio.sleep(to_sleep)
+            elapsed += to_sleep
 
     async def search_public_channels(self, query: str, limit: int = 10) -> List[Union[Channel, Chat]]:
         key = f"{query.strip().lower()}|{limit}"

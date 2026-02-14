@@ -11,7 +11,7 @@ def test_build_query_plan_expands_variants():
     queries, keywords = pipeline.build_query_plan("IELTS Study Club")
     qset = set(queries)
     assert "ielts_prep" in qset
-    assert "ielts preparation" in qset
+    assert "ielts_study" in qset
     assert "ielts_study_club" in qset
 
 

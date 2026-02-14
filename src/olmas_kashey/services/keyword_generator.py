@@ -44,18 +44,19 @@ class KeywordGenerator:
         Generates a stream of search queries.
         Combines base keywords with modifiers and shuffles them.
         """
+        base_topics = settings.discovery.allowed_topics or self.BASE_KEYWORDS
         
         combined = []
         
         # 1. Base keywords alone
-        for kw in self.BASE_KEYWORDS:
+        for kw in base_topics:
             combined.append(self._normalize(kw))
             
         # 2. Base + Modifier
-        for kw in self.BASE_KEYWORDS:
+        for kw in base_topics:
             for mod in self.MODIFIERS:
                 combined.append(self._normalize(f"{kw} {mod}"))
-                combined.append(self._normalize(f"{mod} {kw}")) # Reverse order too? Maybe less common but possible.
+                combined.append(self._normalize(f"{mod} {kw}"))
 
         # Deduplicate
         unique_queries = list(set(combined))

@@ -19,6 +19,8 @@ from olmas_kashey.db.session import get_db
 from olmas_kashey.telegram.client import OlmasClient
 from olmas_kashey.telegram.entity_classifier import EntityClassifier, ClassifiedEntity
 from olmas_kashey.utils.normalize import normalize_title, normalize_username, normalize_link
+from olmas_kashey.services.ai_keyword_generator import ai_keyword_generator
+from olmas_kashey.services.control_bot import TopicsChangedInterruption
 
 
 @dataclass(frozen=True)
@@ -28,8 +30,9 @@ class Candidate:
 
 
 class DiscoveryPipeline:
-    def __init__(self, client: OlmasClient):
+    def __init__(self, client: OlmasClient, bot: Optional[Any] = None):
         self.client = client
+        self.bot = bot
         self.min_confidence = settings.discovery.min_confidence
         self.high_confidence_threshold = settings.discovery.high_confidence
         self.max_query_variants = settings.discovery.max_query_variants
@@ -57,6 +60,11 @@ class DiscoveryPipeline:
             "cefr": ["cefr prep", "cefr speaking", "cefr writing"],
         }
 
+    async def search_candidates(self, raw_input: str, language: Optional[str] = None, region: Optional[str] = None) -> List[Candidate]:
+        queries, _ = await self.build_query_plan_ai(raw_input)
+        attempts: List[Dict[str, Any]] = []
+        return await self._search_candidates(queries, attempts)
+
     async def discover(self, raw_input: str, language: Optional[str] = None, region: Optional[str] = None) -> Dict[str, Any]:
         logger.info(f"Starting discovery pipeline for: '{raw_input}'")
 
@@ -73,7 +81,8 @@ class DiscoveryPipeline:
                 "debug": {"source": "cache"}
             }
 
-        queries, keyword_tokens = self.build_query_plan(raw_input, language, region)
+        # Use AI for query planning
+        queries, keyword_tokens = await self.build_query_plan_ai(raw_input)
         attempts = []
 
         explicit_handle = self._extract_explicit_handle(raw_input)
@@ -95,6 +104,19 @@ class DiscoveryPipeline:
                 attempts.append({"type": "resolve", "target": explicit_handle, "status": "failed", "error": str(e)})
 
         candidates, used_queries = await self._search_candidates_with_early_stop(queries, keyword_tokens, attempts)
+        
+        # Fallback: if no candidates found, try rule-based expansion
+        if not candidates:
+            logger.info(f"AI search returned nothing for '{raw_input}'. Trying rule-based fallback...")
+            queries_fb, kw_tokens_fb = self.build_query_plan(raw_input, language, region)
+            # Filter queries already tried
+            queries_fb = [q for q in queries_fb if q not in used_queries]
+            if queries_fb:
+                candidates_fb, used_queries_fb = await self._search_candidates_with_early_stop(queries_fb, kw_tokens_fb, attempts)
+                candidates.extend(candidates_fb)
+                used_queries.extend(used_queries_fb)
+                keyword_tokens = list(set(keyword_tokens + kw_tokens_fb))
+
         ranked = self._rank_candidates(used_queries, keyword_tokens, candidates)
 
         if not ranked:
@@ -122,12 +144,43 @@ class DiscoveryPipeline:
             "debug": {"queries": queries, "attempts": attempts}
         }
 
-    async def search_candidates(self, raw_input: str, language: Optional[str] = None, region: Optional[str] = None) -> List[Candidate]:
-        queries, _ = self.build_query_plan(raw_input, language, region)
-        attempts: List[Dict[str, Any]] = []
-        return await self._search_candidates(queries, attempts)
+    async def build_query_plan_ai(self, raw_input: str, count: int = 10) -> Tuple[List[str], List[str]]:
+        """
+        Build a query plan using AI-generated structured output.
+        """
+        logger.info(f"Generating AI query plan for: '{raw_input}'")
+        ai_data = await ai_keyword_generator.generate_keywords(raw_input, count=count)
+        
+        # Combine all parts into a unique list of queries
+        # Order: 1. Usernames (high priority) 2. Variations 3. Keywords
+        queries = []
+        queries.extend(ai_data.get("usernames", []))
+        queries.extend(ai_data.get("variations", []))
+        queries.extend(ai_data.get("keywords", []))
+        
+        # Add original input as fallback
+        queries.append(raw_input)
+        
+        # Deduplicate while preserving priority
+        unique_queries = []
+        seen = set()
+        for q in queries:
+            q_clean = q.strip().lower()
+            if q_clean and q_clean not in seen:
+                unique_queries.append(q_clean)
+                seen.add(q_clean)
+        
+        # Keyword tokens for ranking overlap
+        tokens = set()
+        for q in unique_queries:
+            tokens.update(self._tokenize(q))
+            
+        return unique_queries[:self.max_query_variants], list(tokens)
 
     def build_query_plan(self, raw_input: str, language: Optional[str] = None, region: Optional[str] = None) -> Tuple[List[str], List[str]]:
+        """
+        Legacy rule-based query expansion (used as fallback).
+        """
         raw = (raw_input or "").strip()
         norm = self._normalize_query(raw)
         tokens = [t for t in self._tokenize(norm) if t not in self._stopwords]
@@ -140,9 +193,16 @@ class DiscoveryPipeline:
             if q:
                 queries.append(q)
 
+        # 1. Add tokens and username variants EARLY (high priority)
         if tokens:
             queries.extend(tokens[:3])
+        queries.extend(self._username_variants(tokens, language, region))
 
+        # 2. Add synonyms
+        synonyms = self._expand_with_synonyms(tokens)
+        queries.extend(synonyms)
+
+        # 3. Add base token combinations
         if len(tokens) >= 2:
             queries.extend([
                 " ".join(tokens[:2]),
@@ -153,6 +213,7 @@ class DiscoveryPipeline:
                 "".join(tokens[-2:]),
             ])
 
+        # 4. Add suffixes (lower priority, likely to be truncated)
         if base:
             for suffix in self._query_suffixes:
                 queries.append(f"{base} {suffix}")
@@ -174,10 +235,6 @@ class DiscoveryPipeline:
                 queries.append(f"{base} {reg}" if base else reg)
                 queries.append(f"{slug}_{reg}" if slug else reg)
 
-        synonyms = self._expand_with_synonyms(tokens)
-        queries.extend(synonyms)
-        queries.extend(self._username_variants(tokens, language, region))
-
         queries = self._unique_preserve_order(queries)
         queries = queries[:self.max_query_variants]
 
@@ -195,6 +252,10 @@ class DiscoveryPipeline:
         candidates: List[Candidate] = []
         seen_ids = set()
         for query in queries:
+            if self.bot:
+                await self.bot.wait_if_paused()
+                if self.bot.topics_updated:
+                    raise TopicsChangedInterruption()
             try:
                 results = await self.client.search_public_channels(query, limit=self.max_results_per_query)
                 for raw in results:
@@ -223,6 +284,10 @@ class DiscoveryPipeline:
         seen_ids = set()
         used_queries: List[str] = []
         for query in queries:
+            if self.bot:
+                await self.bot.wait_if_paused()
+                if self.bot.topics_updated:
+                    raise TopicsChangedInterruption()
             try:
                 results = await self.client.search_public_channels(query, limit=self.max_results_per_query)
                 for raw in results:
@@ -263,12 +328,31 @@ class DiscoveryPipeline:
             best_score = 0.0
             best_query = ""
             for qn, qt in zip(query_norms, query_token_sets):
+                # 1. Partial Username Search Optimization
+                # Exact or partial match in username is HIGH priority
+                user_match_score = 0.0
+                qn_tight = qn.replace(" ", "")
+                if username:
+                    if qn_tight == username:
+                        user_match_score = 1.0
+                    elif qn_tight in username:
+                        user_match_score = 0.8
+                    else:
+                        user_match_score = fuzz.ratio(qn_tight, username) / 100.0
+
+                # 2. Title matching
                 title_score = fuzz.token_set_ratio(qn, title) / 100.0 if title else 0.0
-                user_score = fuzz.ratio(qn.replace(" ", ""), username) / 100.0 if username else 0.0
+                
+                # 3. Token overlap
                 token_overlap = self._jaccard(qt, title_tokens)
-                total = (title_score * 0.45) + (user_score * 0.25) + (token_overlap * 0.2) + (desc_score * 0.1)
+                
+                # Weighted Total: Prioritize Username (0.6) over Title (0.3)
+                total = (user_match_score * 0.6) + (title_score * 0.2) + (token_overlap * 0.1) + (desc_score * 0.1)
+                
+                # Bonus for keyword in username
                 if username and keyword_token_set and any(k in username for k in keyword_token_set):
-                    total = min(1.0, total + 0.05)
+                    total = min(1.0, total + 0.1)
+                
                 if total > best_score:
                     best_score = total
                     best_query = qn
@@ -289,7 +373,7 @@ class DiscoveryPipeline:
                 "entity": entity
             })
 
-        ranked.sort(key=lambda x: x["score"], reverse=True)
+        ranked.sort(key=lambda x: (x["score"], x["username"] is not None), reverse=True)
         return ranked[:self.max_ranked_candidates]
 
     async def _lookup_cache(self, title: str, username: Optional[str]) -> Optional[Entity]:

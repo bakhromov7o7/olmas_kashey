@@ -22,6 +22,8 @@ class TelegramSettings(BaseSettings):
     session_dir: Path = Field(default=Path("sessions"), description="Directory to store session files")
     session_name: str = Field(default="olmas_session", description="Session file name")
     phone_number: Optional[str] = Field(default=None, description="Phone number for login")
+    bot_token: Optional[str] = Field(default=None, description="Telegram Bot Token")
+    authorized_user_id: Optional[int] = Field(default=None, description="Telegram ID of the authorized admin")
     
     @field_validator("session_dir")
     @classmethod
@@ -30,25 +32,25 @@ class TelegramSettings(BaseSettings):
         return v
 
 class TelegramRateLimitSettings(BaseSettings):
-    concurrency: int = Field(default=2, ge=1, description="Max concurrent Telegram requests")
-    default_interval_seconds: float = Field(default=1.0, ge=0, description="Default minimum interval between requests")
-    search_interval_seconds: float = Field(default=2.0, ge=0, description="Min interval for search requests")
-    resolve_interval_seconds: float = Field(default=2.0, ge=0, description="Min interval for resolve requests")
-    join_interval_seconds: float = Field(default=8.0, ge=0, description="Min interval for join requests")
+    concurrency: int = Field(default=3, ge=1, description="Max concurrent Telegram requests")
+    default_interval_seconds: float = Field(default=2.0, ge=0, description="Default minimum interval between requests")
+    search_interval_seconds: float = Field(default=8.0, ge=0, description="Min interval for search requests")
+    resolve_interval_seconds: float = Field(default=3.0, ge=0, description="Min interval for resolve requests")
+    join_interval_seconds: float = Field(default=15.0, ge=0, description="Min interval for join requests")
     participant_interval_seconds: float = Field(default=5.0, ge=0, description="Min interval for participant requests")
-    message_interval_seconds: float = Field(default=3.0, ge=0, description="Min interval for message requests")
+    message_interval_seconds: float = Field(default=5.0, ge=0, description="Min interval for message requests")
     dialogs_interval_seconds: float = Field(default=5.0, ge=0, description="Min interval for dialogs requests")
-    flood_jitter_seconds: float = Field(default=2.0, ge=0, description="Jitter added to FloodWait sleeps")
-    backoff_base_seconds: float = Field(default=2.0, ge=0, description="Base seconds for exponential backoff")
-    backoff_max_seconds: float = Field(default=60.0, ge=0, description="Max seconds for exponential backoff")
+    flood_jitter_seconds: float = Field(default=3.0, ge=0, description="Jitter added to FloodWait sleeps")
+    backoff_base_seconds: float = Field(default=3.0, ge=0, description="Base seconds for exponential backoff")
+    backoff_max_seconds: float = Field(default=120.0, ge=0, description="Max seconds for exponential backoff")
 
 class DatabaseSettings(BaseSettings):
     url: str = Field(default="sqlite+aiosqlite:///./olmas_kashey.db", description="Database Connection URL")
 
 class DiscoverySettings(BaseSettings):
-    rate_limit_per_second: float = Field(default=1.0, description="Rate limit for discovery requests")
-    keyword_batch_size: int = Field(default=10, description="Number of keywords to process in a batch")
-    batch_interval_seconds: int = Field(default=120, description="Interval between batches")
+    rate_limit_per_second: float = Field(default=0.3, description="Rate limit for discovery requests")
+    keyword_batch_size: int = Field(default=5, description="Number of keywords to process in a batch")
+    batch_interval_seconds: int = Field(default=30, description="Interval between batches")
     max_query_variants: int = Field(default=25, description="Max expanded search queries per discovery")
     max_results_per_query: int = Field(default=15, description="Max results per search query")
     max_ranked_candidates: int = Field(default=20, description="Max ranked candidates to return")
@@ -60,10 +62,10 @@ class DiscoverySettings(BaseSettings):
     entity_cache_ttl_seconds: int = Field(default=86400, ge=0, description="TTL for entity cache in seconds")
     
     # Safety & Human-like behavior
-    join_delay_min: int = Field(default=20, description="Min seconds to wait before joining")
-    join_delay_max: int = Field(default=45, description="Max seconds to wait before joining")
-    message_delay_min: int = Field(default=15, description="Min seconds to wait between messages")
-    message_delay_max: int = Field(default=35, description="Max seconds to wait between messages")
+    join_delay_min: int = Field(default=30, description="Min seconds to wait before joining")
+    join_delay_max: int = Field(default=30, description="Max seconds to wait before joining")
+    message_delay_min: int = Field(default=20, description="Min seconds to wait between messages")
+    message_delay_max: int = Field(default=60, description="Max seconds to wait between messages")
     
     # Allowlist
     allowed_topics: List[str] = Field(default=["ielts", "uzbekistan", "tashkent"], description="Whitelisted topics/keywords")
