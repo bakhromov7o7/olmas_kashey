@@ -58,9 +58,31 @@ class GroupDiscoveryService:
             if i < iterations - 1:
                 delay = settings.discovery.batch_interval_seconds
                 logger.info(f"Iteration {i+1} complete. Waiting {delay}s before next batch...")
-                if sig_handler:
-                    if await sig_handler.sleep(delay):
-                        break
+                
+                if sig_handler or self.bot:
+                    end_time = asyncio.get_running_loop().time() + delay
+                    while not (sig_handler and sig_handler.check_shutdown):
+                        if self.bot:
+                            await self.bot.wait_if_paused()
+                            if self.bot.manual_resume_event.is_set():
+                                self.bot.manual_resume_event.clear()
+                                await self.bot.bot_client.send_message(
+                                    settings.telegram.authorized_user_id,
+                                    "⚙️ Discovery qayta ishga tushdi..."
+                                )
+                                break
+                        
+                        now = asyncio.get_running_loop().time()
+                        remaining = end_time - now
+                        if remaining <= 0:
+                            break
+                            
+                        sleep_duration = min(5, remaining)
+                        if sig_handler:
+                            if await sig_handler.sleep(sleep_duration):
+                                break
+                        else:
+                            await asyncio.sleep(sleep_duration)
                 else:
                     await asyncio.sleep(delay)
 

@@ -29,6 +29,7 @@ class ControlBotService:
         self.ai_gen = AIKeywordGenerator()
         self.topics_updated = False
         self._timed_pause_task: Optional[asyncio.Task] = None
+        self.manual_resume_event = asyncio.Event()
 
     async def start(self):
         if not settings.telegram.bot_token:
@@ -99,6 +100,7 @@ class ControlBotService:
             if not await self._check_auth(event):
                 return
             self._pause_event.set()
+            self.manual_resume_event.set()
             await event.respond("▶️ Discovery davom ettirilmoqda.")
             raise events.StopPropagation
 
@@ -326,10 +328,11 @@ class ControlBotService:
         try:
             await asyncio.sleep(minutes * 60)
             self._pause_event.set()
+            self.manual_resume_event.set()
             if self.bot_client and settings.telegram.authorized_user_id:
                 await self.bot_client.send_message(
                     settings.telegram.authorized_user_id,
-                    "▶️ Kutish vaqti tugadi. Discovery avtomatik davom ettirilmoqda."
+                    "▶️ Kutish vaqti tugadi. Discovery davom ettirilmoqda."
                 )
         except asyncio.CancelledError:
             pass

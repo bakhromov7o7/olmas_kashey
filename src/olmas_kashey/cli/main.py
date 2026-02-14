@@ -180,7 +180,25 @@ async def _monitor() -> None:
                 if remaining <= 0:
                     break
                     
-                await sig_handler.sleep(min(10, remaining))
+                # Responsive sleep: wait for shutdown OR manual resume OR timeout
+                sleep_duration = min(10, remaining)
+                tasks = [asyncio.create_task(sig_handler.sleep(sleep_duration))]
+                if bot_service:
+                    tasks.append(asyncio.create_task(bot_service.manual_resume_event.wait()))
+                
+                done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for t in pending: t.cancel()
+                
+                if bot_service and bot_service.manual_resume_event.is_set():
+                    bot_service.manual_resume_event.clear()
+                    await bot_service.bot_client.send_message(
+                        settings.telegram.authorized_user_id,
+                        "⚙️ Discovery qayta ishga tushdi..."
+                    )
+                    break # Skip remaining delay
+                
+                if sig_handler.check_shutdown:
+                    break
                 
     except Exception as e:
         logger.exception("Engine failure")
