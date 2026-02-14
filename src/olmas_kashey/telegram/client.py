@@ -64,6 +64,7 @@ class OlmasClient:
         self._search_cache = TTLCache[List[Union[Channel, Chat]]](settings.discovery.query_cache_ttl_seconds)
         self._search_negative_cache = TTLCache[bool](settings.discovery.negative_cache_ttl_seconds)
         self._resolve_cache = TTLCache[Any](settings.discovery.entity_cache_ttl_seconds)
+        self.flood_wait_until: Optional[float] = None
 
     async def start(self) -> None:
         await self.client.start(phone=settings.telegram.phone_number)
@@ -135,19 +136,23 @@ class OlmasClient:
             return
 
         end_time = asyncio.get_running_loop().time() + seconds
+        self.flood_wait_until = end_time
         
-        while True:
-            # Check pause/resume
-            await self.bot.wait_if_paused()
-            
-            now = asyncio.get_running_loop().time()
-            remaining = end_time - now
-            
-            if remaining <= 0:
-                break
-            
-            # Sleep in short bursts to remain responsive to pause/resume
-            await asyncio.sleep(min(2.0, remaining))
+        try:
+            while True:
+                # Check pause/resume
+                await self.bot.wait_if_paused()
+                
+                now = asyncio.get_running_loop().time()
+                remaining = end_time - now
+                
+                if remaining <= 0:
+                    break
+                
+                # Sleep in short bursts to remain responsive to pause/resume
+                await asyncio.sleep(min(2.0, remaining))
+        finally:
+            self.flood_wait_until = None
 
     async def search_public_channels(self, query: str, limit: int = 10) -> List[Union[Channel, Chat]]:
         key = f"{query.strip().lower()}|{limit}"

@@ -30,6 +30,7 @@ class ControlBotService:
         self.topics_updated = False
         self._timed_pause_task: Optional[asyncio.Task] = None
         self.manual_resume_event = asyncio.Event()
+        self.timed_pause_until: Optional[float] = None
 
     async def start(self):
         if not settings.telegram.bot_token:
@@ -259,8 +260,22 @@ class ControlBotService:
                 f"📈 Jami qo'shilganlar: {total_joined}\n"
                 f"🚫 Jami banlar: {ban_count}\n"
                 f"⏱️ Batch interval: {settings.discovery.batch_interval_seconds}s\n"
-                f"📑 Topiclar: {', '.join(settings.discovery.allowed_topics)}\n\n"
+                f"📑 Topiclar: {', '.join(settings.discovery.allowed_topics)}\n"
             )
+
+            # Add countdowns
+            now_loop = asyncio.get_running_loop().time()
+            if self.timed_pause_until and self.timed_pause_until > now_loop:
+                rem = int(self.timed_pause_until - now_loop)
+                mins, secs = divmod(rem, 60)
+                report += f"⏳ **Pauza tugashiga:** {mins}m {secs}s\n"
+            
+            if self.client and hasattr(self.client, 'flood_wait_until') and self.client.flood_wait_until:
+                if self.client.flood_wait_until > now_loop:
+                    rem = int(self.client.flood_wait_until - now_loop)
+                    report += f"⚠️ **Telegram cheklovi:** {rem}s qoldi\n"
+
+            report += "\n"
             
             if last_runs:
                 report += "**Oxirgi qidiruvlar:**\n"
@@ -326,6 +341,8 @@ class ControlBotService:
     async def _timed_pause(self, minutes: int):
         """Background task to auto-resume after pause."""
         try:
+            end_time = asyncio.get_running_loop().time() + (minutes * 60)
+            self.timed_pause_until = end_time
             await asyncio.sleep(minutes * 60)
             self._pause_event.set()
             self.manual_resume_event.set()
@@ -336,8 +353,9 @@ class ControlBotService:
                 )
         except asyncio.CancelledError:
             pass
-        except Exception as e:
-            logger.error(f"Timed pause error: {e}")
+        finally:
+            self.timed_pause_until = None
+            self._timed_pause_task = None
 
     async def _report_scheduler(self):
         """Send daily reports at 10:00 and 18:00 UZ time."""
