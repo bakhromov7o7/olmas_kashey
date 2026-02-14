@@ -156,6 +156,10 @@ class GroupDiscoveryService:
                             mem.joined_at = datetime.now(timezone.utc)
                             
                             logger.info(f"Auto-joined group: {classified.title or classified.username}")
+                        
+                            # Instant Telegram notification
+                            if self.bot:
+                                await self.bot.notify_join(classified.title or classified.username, classified.username)
                             
                             # Emit join event
                             join_event = Event(

@@ -46,6 +46,9 @@ class ControlBotService:
         await self.bot_client.start(bot_token=settings.telegram.bot_token)
         self.is_running = True
         
+        # Start scheduled reports
+        asyncio.create_task(self._report_scheduler())
+        
         @self.bot_client.on(events.NewMessage(pattern=r'^/start(@\w+)?(\s|$)'))
         async def start_handler(event):
             logger.info(f"Command /start received from {event.sender_id}")
@@ -198,20 +201,28 @@ class ControlBotService:
         return True
 
     async def _get_status_report(self) -> str:
-        now = datetime.now(timezone.utc)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        uz_tz = timezone(timedelta(hours=5))
+        now_uz = datetime.now(uz_tz)
+        # Today start in UTC+5
+        today_start_utc = now_uz.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
         
         async for session in get_db():
             # Today's joined groups
             joined_stmt = select(func.count(Membership.id)).where(
                 Membership.state == MembershipState.JOINED,
-                Membership.joined_at >= today_start
+                Membership.joined_at >= today_start_utc
             )
             joined_count = (await session.execute(joined_stmt)).scalar() or 0
             
+            # Total joined groups
+            total_joined_stmt = select(func.count(Membership.id)).where(
+                Membership.state == MembershipState.JOINED
+            )
+            total_joined = (await session.execute(total_joined_stmt)).scalar() or 0
+            
             # Today's discovered entities (all states)
             discovered_stmt = select(func.count(Entity.id)).where(
-                Entity.discovered_at >= today_start
+                Entity.discovered_at >= today_start_utc
             )
             discovered_count = (await session.execute(discovered_stmt)).scalar() or 0
             
@@ -242,6 +253,7 @@ class ControlBotService:
                 f"🛡️ Account: {health_str}\n"
                 f"🔍 Bugun topildi: {discovered_count}\n"
                 f"📅 Bugun qo'shildi: {joined_count}\n"
+                f"📈 Jami qo'shilganlar: {total_joined}\n"
                 f"🚫 Jami banlar: {ban_count}\n"
                 f"⏱️ Batch interval: {settings.discovery.batch_interval_seconds}s\n"
                 f"📑 Topiclar: {', '.join(settings.discovery.allowed_topics)}\n\n"
@@ -253,7 +265,7 @@ class ControlBotService:
                     icon = "✅" if run.success else "❌"
                     report += f"{icon} {run.keyword} ({run.results_count} natija)\n"
             
-            # AI insight (simplified)
+            # AI insight
             if joined_count > 10:
                 insight = "🚀 Bugun juda faolmiz! Telegram ban berish ehtimoli ortishi mumkin."
             elif joined_count == 0:
@@ -292,6 +304,22 @@ class ControlBotService:
         except Exception as e:
             logger.error(f"Failed to send FloodWait notification: {e}")
 
+    async def notify_join(self, title: str, username: Optional[str] = None):
+        """Send proactive notification about a new group join."""
+        if not self.bot_client or not settings.telegram.authorized_user_id:
+            return
+
+        link = f"@{username}" if username else "shaxsiy havola"
+        msg = f"✅ **Yangi guruhga a'zo bo'ldi!**\n\nNom: **{title}**\nHavola: {link}"
+        
+        try:
+            await self.bot_client.send_message(
+                settings.telegram.authorized_user_id,
+                msg
+            )
+        except Exception as e:
+            logger.error(f"Failed to send join notification: {e}")
+
     async def _timed_pause(self, minutes: int):
         """Background task to auto-resume after pause."""
         try:
@@ -306,6 +334,32 @@ class ControlBotService:
             pass
         except Exception as e:
             logger.error(f"Timed pause error: {e}")
+
+    async def _report_scheduler(self):
+        """Send daily reports at 10:00 and 18:00 UZ time."""
+        uz_tz = timezone(timedelta(hours=5))
+        logger.info("Report scheduler started (10:00 and 18:00 UZ time)")
+        
+        while self.is_running:
+            try:
+                now_uz = datetime.now(uz_tz)
+                current_time = now_uz.strftime("%H:%M")
+                
+                if current_time in ["10:00", "18:00"]:
+                    logger.info(f"Sending scheduled report at {current_time} UZ time")
+                    report = await self._get_status_report()
+                    await self.bot_client.send_message(
+                        settings.telegram.authorized_user_id,
+                        f"📅 **Rejali Hisobot ({current_time}):**\n\n{report}"
+                    )
+                    # Sleep for 61 seconds to avoid double trigger
+                    await asyncio.sleep(61)
+                else:
+                    # Check every minute
+                    await asyncio.sleep(30)
+            except Exception as e:
+                logger.error(f"Report scheduler error: {e}")
+                await asyncio.sleep(60)
 
     async def wait_if_paused(self):
         """Called by discovery service to support pausing."""
