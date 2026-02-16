@@ -163,9 +163,9 @@ async def _monitor() -> None:
 
             # 6. Global Cycle Delay
             iteration += 1
-            cycle_delay = settings.service.scheduler_interval_minutes * 60
+            cycle_delay = settings.service.scheduler_interval_seconds
             typer.secho(f"🏁 Cycle {iteration-1} complete.", fg=typer.colors.GREEN)
-            typer.echo(f"💤 Next cycle in {settings.service.scheduler_interval_minutes} minutes ({cycle_delay}s).")
+            typer.echo(f"💤 Next cycle in {cycle_delay} seconds.")
             typer.echo("💡 Use /resume in Telegram to start immediately.")
             
             # Wait for delay OR until resume if paused

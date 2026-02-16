@@ -100,7 +100,23 @@ class ControlBotService:
             if not await self._check_auth(event):
                 return
             self._pause_event.clear()
-            await event.respond("⏸️ Discovery to'xtatildi.")
+            await event.respond("⏸️ Discovery to'xtatildi (Cheksiz). Qaytish uchun /resume dan foydalaning.")
+            raise events.StopPropagation
+
+        @self.bot_client.on(events.NewMessage(pattern=r'^/sleep(@\w+)?(\s|$)'))
+        async def sleep_menu_handler(event):
+            logger.info(f"Command /sleep received from {event.sender_id}")
+            if not await self._check_auth(event):
+                return
+            
+            buttons = [
+                [Button.inline("10 minut", b"pause_time_10"), Button.inline("20 minut", b"pause_time_20")],
+                [Button.inline("30 minut", b"pause_time_30"), Button.inline("1 soat", b"pause_time_60")],
+                [Button.inline("3 soat", b"pause_time_180"), Button.inline("6 soat", b"pause_time_360")],
+                [Button.inline("12 soat", b"pause_time_720")],
+                [Button.inline("❌ Bekor qilish", b"cancel")]
+            ]
+            await event.respond("Botni qancha vaqtga uxlashga (pauza) yubormoqchisiz?", buttons=buttons)
             raise events.StopPropagation
 
         @self.bot_client.on(events.NewMessage(pattern=r'^/resume(@\w+)?(\s|$)'))
@@ -123,6 +139,23 @@ class ControlBotService:
                 settings.discovery.batch_interval_seconds = val
                 self._update_env_file("DISCOVERY__BATCH_INTERVAL_SECONDS", str(val))
                 await event.respond(f"✅ Batch interval {val} sekundga o'zgartirildi.")
+            except Exception as e:
+                await event.respond(f"❌ Xatolik: {e}")
+            raise events.StopPropagation
+
+        @self.bot_client.on(events.NewMessage(pattern=r'^/set_cycle(@\w+)?\s+(\d+)'))
+        async def cycle_handler(event):
+            logger.info(f"Command /set_cycle received from {event.sender_id}")
+            if not await self._check_auth(event):
+                return
+            try:
+                val = int(event.pattern_match.group(2))
+                if val < 10:
+                    await event.respond("⚠️ Cycle interval kamida 10 sekund bo'lishi kerak.")
+                    return
+                settings.service.scheduler_interval_seconds = val
+                self._update_env_file("SERVICE__SCHEDULER_INTERVAL_SECONDS", str(val))
+                await event.respond(f"✅ Global cycle delay {val} sekundga o'zgartirildi.")
             except Exception as e:
                 await event.respond(f"❌ Xatolik: {e}")
             raise events.StopPropagation
@@ -282,6 +315,7 @@ class ControlBotService:
                 f"📈 Jami qo'shilganlar: {total_joined}\n"
                 f"🚫 Jami banlar: {ban_count}\n"
                 f"⏱️ Batch interval: {settings.discovery.batch_interval_seconds}s\n"
+                f"🔄 Cycle delay: {settings.service.scheduler_interval_seconds}s\n"
                 f"📑 Topiclar: {', '.join(settings.discovery.allowed_topics)}\n"
             )
 
