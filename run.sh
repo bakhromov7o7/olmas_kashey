@@ -13,10 +13,14 @@ start() {
     fi
 
     echo "Bot ishga tushirilyapti..."
-    # 'start' command runs the full automation engine (discovery + monitor + control bot)
+    # Set PYTHONPATH so 'olmas_kashey' module is found in 'src' directory
+    # Use 'start' command for full automation + control bot
+    export PYTHONPATH=$PYTHONPATH:$(pwd)/src
     nohup $VENV_PYTHON -m $APP_NAME start > "$LOG_FILE" 2>&1 &
-    echo $! > "$PID_FILE"
-    echo "Bot fonda ishga tushdi. PID: $(cat $PID_FILE)"
+    
+    PID=$!
+    echo $PID > "$PID_FILE"
+    echo "Bot fonda ishga tushdi. PID: $PID"
     echo "Loglarni ko'rish uchun: ./run.sh logs"
 }
 

@@ -158,13 +158,15 @@ async def _monitor() -> None:
 
             # 5. Group Discovery
             if bot_service: await bot_service.wait_if_paused()
-            typer.echo("🔍 Running discovery cycle...")
-            await discovery_service.run(iterations=2, sig_handler=sig_handler)
+            typer.secho(f"🔍 Running discovery cycle ({iteration})...", fg=typer.colors.BLUE)
+            await discovery_service.run(iterations=5, sig_handler=sig_handler)
 
             # 6. Global Cycle Delay
             iteration += 1
             cycle_delay = settings.service.scheduler_interval_minutes * 60
-            typer.secho(f"🏁 Cycle complete. Sleeping {cycle_delay}s...", fg=typer.colors.BRIGHT_BLACK)
+            typer.secho(f"🏁 Cycle {iteration-1} complete.", fg=typer.colors.GREEN)
+            typer.echo(f"💤 Next cycle in {settings.service.scheduler_interval_minutes} minutes ({cycle_delay}s).")
+            typer.echo("💡 Use /resume in Telegram to start immediately.")
             
             # Wait for delay OR until resume if paused
             total_sleep = 0

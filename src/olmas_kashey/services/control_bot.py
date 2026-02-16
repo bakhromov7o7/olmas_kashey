@@ -38,16 +38,23 @@ class ControlBotService:
             logger.warning("No bot token provided, remote control bot disabled.")
             return
 
-        logger.info("Starting Remote Control Bot...")
-        self.bot_client = TelegramClient(
-            'bot_session', 
-            settings.telegram.api_id, 
-            settings.telegram.api_hash,
-            proxy=settings.proxy.formatted_proxy()
-        )
+        if not self.bot_client:
+            self.bot_client = TelegramClient(
+                'bot_session', 
+                settings.telegram.api_id, 
+                settings.telegram.api_hash,
+                proxy=settings.proxy.formatted_proxy()
+            )
         
-        await self.bot_client.start(bot_token=settings.telegram.bot_token)
+        logger.info("Connecting to Telegram Bot API...")
+        try:
+            await self.bot_client.start(bot_token=settings.telegram.bot_token)
+        except Exception as e:
+            logger.error(f"Failed to start Bot Client: {e}")
+            return
+
         self.is_running = True
+        logger.info("Remote Control Bot connected and authorized.")
         
         # Start scheduled reports
         asyncio.create_task(self._report_scheduler())
