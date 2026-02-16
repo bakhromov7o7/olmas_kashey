@@ -1,3 +1,5 @@
+groq>=0.5.0
+rapidfuzz>=3.9.0
 telethon>=1.36.0
 sqlalchemy[asyncio]>=2.0.31
 alembic>=1.13.2
@@ -6,3 +8,5 @@ pydantic-settings>=2.3.4
 loguru>=0.7.2
 aiosqlite>=0.20.0
 typer>=0.12.3
+python-socks[asyncio]>=2.4.4
+asyncpg>=0.29.0

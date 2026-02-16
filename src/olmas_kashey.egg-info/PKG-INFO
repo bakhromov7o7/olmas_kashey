@@ -4,6 +4,8 @@ Version: 0.1.0
 Summary: Telegram user-account automation for discovering relevant public groups.
 Author-email: User <user@example.com>
 Requires-Python: >=3.9
+Requires-Dist: groq>=0.5.0
+Requires-Dist: rapidfuzz>=3.9.0
 Requires-Dist: telethon>=1.36.0
 Requires-Dist: sqlalchemy[asyncio]>=2.0.31
 Requires-Dist: alembic>=1.13.2
@@ -12,3 +14,5 @@ Requires-Dist: pydantic-settings>=2.3.4
 Requires-Dist: loguru>=0.7.2
 Requires-Dist: aiosqlite>=0.20.0
 Requires-Dist: typer>=0.12.3
+Requires-Dist: python-socks[asyncio]>=2.4.4
+Requires-Dist: asyncpg>=0.29.0

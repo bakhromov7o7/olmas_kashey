@@ -9,12 +9,16 @@ src/olmas_kashey.egg-info/dependency_links.txt
 src/olmas_kashey.egg-info/requires.txt
 src/olmas_kashey.egg-info/top_level.txt
 src/olmas_kashey/cli/main.py
+src/olmas_kashey/core/cache.py
 src/olmas_kashey/core/logging.py
 src/olmas_kashey/core/settings.py
 src/olmas_kashey/core/signal_handler.py
 src/olmas_kashey/core/types.py
 src/olmas_kashey/db/models.py
 src/olmas_kashey/db/session.py
+src/olmas_kashey/services/ai_keyword_generator.py
+src/olmas_kashey/services/control_bot.py
+src/olmas_kashey/services/discovery_pipeline.py
 src/olmas_kashey/services/group_discovery.py
 src/olmas_kashey/services/health_monitor.py
 src/olmas_kashey/services/keyword_generator.py
