@@ -57,6 +57,9 @@ class GroupDiscoveryService:
             # Add batch delay between iterations to be more human-like
             if i < iterations - 1:
                 delay = settings.discovery.batch_interval_seconds
+                if self.bot and getattr(self.bot, 'eco_mode', False):
+                    delay = max(120, delay)
+                
                 logger.info(f"Iteration {i+1} complete. Waiting {delay}s before next batch...")
                 
                 if sig_handler or self.bot:

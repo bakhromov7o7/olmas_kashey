@@ -31,6 +31,7 @@ class ControlBotService:
         self._timed_pause_task: Optional[asyncio.Task] = None
         self.manual_resume_event = asyncio.Event()
         self.timed_pause_until: Optional[float] = None
+        self.eco_mode = False
 
     async def start(self):
         if not settings.telegram.bot_token:
@@ -117,6 +118,19 @@ class ControlBotService:
                 await event.respond(f"✅ Batch interval {val} sekundga o'zgartirildi.")
             except Exception as e:
                 await event.respond(f"❌ Xatolik: {e}")
+            raise events.StopPropagation
+
+        @self.bot_client.on(events.NewMessage(pattern=r'^/eco(@\w+)?(\s|$)'))
+        async def eco_handler(event):
+            logger.info(f"Command /eco received from {event.sender_id}")
+            if not await self._check_auth(event):
+                return
+            self.eco_mode = not self.eco_mode
+            status = "yoqildi 🐢 (Maksimal xavfsizlik)" if self.eco_mode else "o'chirildi 🚀 (Normal tezlik)"
+            msg = f"🛡️ **Ekonom rejim {status}.**\n\n"
+            if self.eco_mode:
+                msg += "• Interval: 120s\n• Cheklovlar: 2 barobar uzoqroq kutish"
+            await event.respond(msg)
             raise events.StopPropagation
 
         @self.bot_client.on(events.NewMessage(pattern=r'^/set_topics(@\w+)?\s+(.+)'))
@@ -250,10 +264,11 @@ class ControlBotService:
                 health_str = "💤 Client ulanmagan"
 
             status = "🟢 Ishlamoqda" if self._pause_event.is_set() else "⏸️ To'xtatilgan"
+            eco_status = " 🐢 (Ekonom)" if self.eco_mode else ""
             
             report = (
                 f"📊 **Hozirgi Holat:**\n"
-                f"Status: {status}\n"
+                f"Status: {status}{eco_status}\n"
                 f"🛡️ Account: {health_str}\n"
                 f"🔍 Bugun topildi: {discovered_count}\n"
                 f"📅 Bugun qo'shildi: {joined_count}\n"

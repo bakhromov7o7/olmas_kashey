@@ -101,6 +101,12 @@ class OlmasClient:
                 return result
             except errors.FloodWaitError as e:
                 wait_time = e.seconds + random.uniform(1, settings.telegram_limits.flood_jitter_seconds + 1)
+                
+                # Eco-mode: Double the sleep time for safety
+                if self.bot and getattr(self.bot, 'eco_mode', False):
+                    wait_time *= 2
+                    logger.info(f"Eco-mode active: doubling FloodWait sleep to {wait_time:.2f}s")
+
                 logger.warning(f"FloodWaitError: sleeping for {wait_time:.2f}s (Attempt {attempt+1}/{max_attempts})")
                 
                 if self.bot and hasattr(self.bot, 'notify_flood_wait'):
