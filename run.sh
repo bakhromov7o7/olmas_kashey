@@ -13,7 +13,8 @@ start() {
     fi
 
     echo "Bot ishga tushirilyapti..."
-    nohup $VENV_PYTHON -m $APP_NAME continuous-search --topic "ielts" --delay 10 > "$LOG_FILE" 2>&1 &
+    # 'start' command runs the full automation engine (discovery + monitor + control bot)
+    nohup $VENV_PYTHON -m $APP_NAME start > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "Bot fonda ishga tushdi. PID: $(cat $PID_FILE)"
     echo "Loglarni ko'rish uchun: ./run.sh logs"
