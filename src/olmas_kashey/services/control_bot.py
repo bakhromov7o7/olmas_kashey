@@ -22,6 +22,7 @@ class TopicsChangedInterruption(Exception):
 class ControlBotService:
     def __init__(self, client: Optional[TelegramClient] = None):
         self.client = client
+        self.membership_monitor = None # Set later if needed
         self.bot_client: Optional[TelegramClient] = None
         self.is_running = False
         self._pause_event = asyncio.Event()
@@ -171,6 +172,26 @@ class ControlBotService:
             if self.eco_mode:
                 msg += "• Interval: 120s\n• Cheklovlar: 2 barobar uzoqroq kutish"
             await event.respond(msg)
+            raise events.StopPropagation
+
+        @self.bot_client.on(events.NewMessage(pattern=r'^/check_groups(@\w+)?(\s|$)'))
+        async def check_groups_handler(event):
+            logger.info(f"Command /check_groups received from {event.sender_id}")
+            if not await self._check_auth(event):
+                return
+            
+            if not self.membership_monitor:
+                await event.respond("❌ MembershipMonitor bog'lanmagan.")
+                return
+            
+            await event.respond("👀 A'zo bo'lingan guruhlarni tekshirish boshlandi. Bu bir necha daqiqa vaqt olishi mumkin...")
+            try:
+                # Trigger internal check
+                await self.membership_monitor.check_all()
+                await event.respond("✅ Guruhlarni tekshirish yakunlandi. Barcha statuslar yangilandi.")
+            except Exception as e:
+                logger.error(f"Manual check error: {e}")
+                await event.respond(f"❌ Tekshirishda xatolik yuz berdi: {e}")
             raise events.StopPropagation
 
         @self.bot_client.on(events.NewMessage(pattern=r'^/set_topics(@\w+)?\s+(.+)'))

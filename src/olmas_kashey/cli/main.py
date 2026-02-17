@@ -121,6 +121,7 @@ async def _monitor() -> None:
     discovery_service = GroupDiscoveryService(client, planner, bot=bot_service)
     membership_service = MembershipService(client)
     membership_monitor = MembershipMonitor(client)
+    bot_service.membership_monitor = membership_monitor
     health_monitor = HealthMonitor(client)
     
     typer.secho("🏗️  Olmas Kashey Automation Engine Starting...", fg=typer.colors.CYAN, bold=True)
