@@ -147,8 +147,11 @@ async def _monitor() -> None:
             if bot_service: await bot_service.wait_if_paused()
 
             # 3. Membership Verification
-            typer.echo("👀 Verifying status of joined groups...")
-            await membership_monitor.check_all()
+            if iteration > 1:
+                typer.echo("👀 Verifying status of joined groups...")
+                await membership_monitor.check_all()
+            else:
+                typer.echo("⏩ Skipping initial membership verification for faster startup.")
 
             if bot_service: await bot_service.wait_if_paused()
 
