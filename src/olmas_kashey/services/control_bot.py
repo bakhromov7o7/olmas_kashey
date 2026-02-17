@@ -87,14 +87,16 @@ class ControlBotService:
             logger.info(f"Command /start received from {event.sender_id}")
             if not await self._check_auth(event):
                 return
+            
+            keyboard = [
+                [Button.text("📊 Status", resize=True), Button.text("🔍 Guruhlarni tekshirish")],
+                [Button.text("⏸️ Pauza", resize=True), Button.text("▶️ Davom ettirish")],
+                [Button.text("💤 Uyqu", resize=True), Button.text("🐢 Eco")],
+            ]
+            
             await event.respond("👋 Olmas Kashey Remote Control Botga xush kelibsiz!\n\n"
-                                "Buyruqlar:\n"
-                                "/status - Hozirgi holatni ko'rish\n"
-                                "/resume - Discoveryni davom ettirish\n"
-                                "/pause - Discoveryni to'xtatib turish\n"
-                                "/set_interval <son> - Batch intervalni o'zgartirish (sekundda)\n"
-                                "/set_topics <topic1,topic2> - Topiclar ro'yxatini yangilash\n"
-                                "/id - Sizning ID raqamingiz")
+                                "Buyruqlar menyudan yoki quyidagi tugmalar orqali foydalanishingiz mumkin:",
+                                buttons=keyboard)
             raise events.StopPropagation
 
         @self.bot_client.on(events.NewMessage(pattern=r'^/id(@\w+)?(\s|$)'))
@@ -273,9 +275,27 @@ class ControlBotService:
             await event.delete()
 
         @self.bot_client.on(events.NewMessage)
-        async def debug_handler(event):
-            if event.message.text and event.message.text.startswith('/'):
-                logger.debug(f"Unhandled command: {event.message.text} from {event.sender_id}")
+        async def main_handler(event):
+            msg_text = event.message.text
+            if not msg_text:
+                return
+            
+            # Simple routing for text buttons
+            if "Status" in msg_text:
+                await status_handler(event)
+            elif "Pauza" in msg_text:
+                await pause_handler(event)
+            elif "Davom ettirish" in msg_text:
+                await resume_handler(event)
+            elif "Guruhlarni tekshirish" in msg_text:
+                await check_groups_handler(event)
+            elif "Uyqu" in msg_text:
+                await sleep_menu_handler(event)
+            elif "Eco" in msg_text:
+                await eco_handler(event)
+            
+            if msg_text.startswith('/'):
+                logger.debug(f"Command processed: {msg_text}")
 
         logger.info("Remote Control Bot started.")
         await self.bot_client.run_until_disconnected()

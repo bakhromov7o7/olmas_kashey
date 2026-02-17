@@ -28,12 +28,12 @@ stop() {
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         echo "Bot to'xtatilyapti (PID: $PID)..."
-        kill $PID
+        kill $PID 2>/dev/null
         rm "$PID_FILE"
-        echo "Bot to'xtatildi."
-    else
-        echo "Bot ishlamayapti (PID fayli topilmadi)."
     fi
+    # Backup: Kill any remaining olmas_kashey processes
+    pkill -f "$APP_NAME" 2>/dev/null
+    echo "Bot to'xtatildi."
 }
 
 status() {
