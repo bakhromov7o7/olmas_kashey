@@ -170,15 +170,21 @@ class GroupDiscoveryService:
 
                     processed_count += 1
                     
-                    # Auto-join if enabled (only for new groups)
-                    if not existing and settings.service.enable_auto_join:
+                    # Auto-join if enabled (new groups OR existing but NOT_JOINED)
+                    mem_to_join = None
+                    if not existing:
+                        mem_to_join = mem # The new one we just created
+                    elif existing.memberships and existing.memberships.state == MembershipState.NOT_JOINED:
+                        mem_to_join = existing.memberships
+
+                    if mem_to_join and settings.service.enable_auto_join:
                         try:
                             await asyncio.sleep(2)  # Rate limit delay
                             await self.client.join_channel(classified.username or classified.tg_id)
                             
                             # Update membership state
-                            mem.state = MembershipState.JOINED
-                            mem.joined_at = datetime.now(timezone.utc)
+                            mem_to_join.state = MembershipState.JOINED
+                            mem_to_join.joined_at = datetime.now(timezone.utc)
                             
                             logger.info(f"Auto-joined group: {classified.title or classified.username}")
                         

@@ -131,6 +131,10 @@ class MembershipService:
                     session.add(Event(entity_id=entity.id, type="join_success"))
                     await session.commit()
                     logger.info(f"Successfully joined {target}")
+
+                    # Notify through bot if available
+                    if self.bot:
+                        await self.bot.notify_join(entity.title or str(target), entity.username)
                     
                 except Exception as e:
                     logger.error(f"Failed to join {entity.username or entity.tg_id}: {e}")

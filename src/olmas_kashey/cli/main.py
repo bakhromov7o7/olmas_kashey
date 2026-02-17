@@ -119,7 +119,7 @@ async def _monitor() -> None:
     
     planner = QueryPlanner()
     discovery_service = GroupDiscoveryService(client, planner, bot=bot_service)
-    membership_service = MembershipService(client)
+    membership_service = MembershipService(client, bot=bot_service)
     membership_monitor = MembershipMonitor(client)
     bot_service.membership_monitor = membership_monitor
     health_monitor = HealthMonitor(client)
