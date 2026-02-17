@@ -276,11 +276,15 @@ class ControlBotService:
 
         @self.bot_client.on(events.NewMessage)
         async def main_handler(event):
+            """Handle Reply Keyboard text buttons (non-command messages)."""
             msg_text = event.message.text
-            if not msg_text:
+            if not msg_text or msg_text.startswith('/'):
+                return  # Let command handlers handle /commands
+            
+            if not await self._check_auth(event):
                 return
             
-            # Simple routing for text buttons
+            # Route text buttons to their command handlers
             if "Status" in msg_text:
                 await status_handler(event)
             elif "Pauza" in msg_text:
@@ -293,9 +297,6 @@ class ControlBotService:
                 await sleep_menu_handler(event)
             elif "Eco" in msg_text:
                 await eco_handler(event)
-            
-            if msg_text.startswith('/'):
-                logger.debug(f"Command processed: {msg_text}")
 
         logger.info("Remote Control Bot started.")
         await self.bot_client.run_until_disconnected()

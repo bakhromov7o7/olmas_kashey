@@ -52,40 +52,17 @@ class MembershipService:
     async def process_joins(self) -> None:
         """
         Check for groups in allowlist that are NOT_JOINED and attempt to join them.
-        Respects rate limits.
         """
         async for session in get_db():
-            # Join limit check removed as requested by user.
+            now = datetime.now(timezone.utc)
 
-            # 2. Fetch Allowlist
+            # Fetch Allowlist
             allowlist_items = (await session.execute(select(AllowlistItem))).scalars().all()
             allowed_targets = {item.target for item in allowlist_items}
             
             if not allowed_targets:
                 return
 
-            # 3. Find Candidates
-            # Entities that are GROUP/CHANNEL, NOT_JOINED, and match allowed_targets
-            # Matching logic: 
-            # - exact username match
-            # - exact tg_id match (as string in target)
-            
-            # Efficient way: 
-            # - Filter in DB if possible? Harder with mixed types.
-            # - Fetch candidates that match usernames
-            # - Fetch candidates that match IDs
-            
-            # Filter valid candidates from DB side first?
-            # Entities where:
-            # (username IN allowed) OR (tg_id :: str IN allowed)
-            # AND (membership is None OR membership.state == NOT_JOINED)
-            # AND (membership.left_at is None OR left_at < cooldown?) -> "Do not attempt repeated rapid retries"
-
-            # Let's iterate candidates in application code for simplicity given complexity of ID/Username match
-            # Actually we can select Entities where username IN allowed_targets
-            # IDs we have to converting.
-            
-            # Optimisation: 
             # Extract allowed_usernames and allowed_ids
             allowed_usernames = {t for t in allowed_targets if not t.isdigit()}
             allowed_ids = {int(t) for t in allowed_targets if t.isdigit()}
@@ -93,24 +70,20 @@ class MembershipService:
             stmt = select(Entity).outerjoin(Membership).where(
                 (Entity.username.in_(allowed_usernames)) | (Entity.tg_id.in_(allowed_ids)),
                 (Membership.state == None) | (Membership.state == MembershipState.NOT_JOINED)
-            ).limit(self.max_joins_per_day - joins_today) 
+            )
             
             candidates = (await session.execute(stmt)).scalars().all()
             
             for entity in candidates:
-                # Double check cooldown if we tracked failures or leaves
-                # (Not implemented in schema explicitly for failures yet, use events?)
-                # If we have a recent FAILURE event, skip?
-                
-                # Check recent failure event
+                # Check recent failure event (skip if failed in last 6 hours)
                 stmt_event = select(Event).where(
                     Event.entity_id == entity.id,
                     Event.type == "join_failed",
-                    Event.created_at >= now - timedelta(hours=self.join_cooldown_hours)
+                    Event.created_at >= now - timedelta(hours=6)
                 )
                 recent_fail = (await session.execute(stmt_event)).scalar_one_or_none()
                 if recent_fail:
-                    logger.info(f"Skipping {entity.username or entity.tg_id} due to recent failure.")
+                    logger.debug(f"Skipping {entity.username or entity.tg_id} due to recent failure.")
                     continue
 
                 logger.info(f"Attempting to join allowed entity: {entity.username or entity.tg_id}")
@@ -121,7 +94,7 @@ class MembershipService:
                     await self.client.join_channel(target)
                     
                     # Update Membership
-                    if not entity.memberships: # Should be None from outerjoin check
+                    if not entity.memberships:
                          mem = Membership(entity_id=entity.id, state=MembershipState.JOINED, joined_at=now)
                          session.add(mem)
                     else:

@@ -13,12 +13,8 @@ from olmas_kashey.services.keyword_generator import KeywordGenerator
 class QueryPlanner:
     def __init__(self, seed: int = 42) -> None:
         self.generator = KeywordGenerator(seed=seed)
-        self.cooldown = timedelta(days=1)  # Per-keyword cooldown
-        # For demonstration simplicity, standard generator is infinite but logic needs state.
-        # We'll regenerate the list each time but skip used ones.
-        # In a real rigorous system, we might want a persistent queue.
-        # Here we rely on the deterministic shuffle + DB persistence to "resume".
         self._keyword_cache: Optional[List[str]] = None
+        self._current_index: int = 0  # Round-robin index
 
     def _get_keywords(self) -> List[str]:
         # Always generate fresh to respect settings.discovery.allowed_topics changes
@@ -26,59 +22,49 @@ class QueryPlanner:
 
     async def get_next_query(self) -> Optional[str]:
         """
-        Returns the next keyword in order. Limits and cooldowns removed by user request.
+        Returns the next keyword using round-robin rotation.
+        Each call advances to the next keyword in the list.
         """
         keywords = self._get_keywords()
+        if not keywords:
+            return None
+
         now = datetime.now(timezone.utc)
         
-        async for session in get_db():
-            # Find the first keyword that hasn't been used in this specific run or just pick one.
-            # We still use KeywordUsage to keep track but ignore the cooldown logic.
-            for kw in keywords:
-                stmt = select(KeywordUsage).where(KeywordUsage.keyword == kw)
-                result = await session.execute(stmt)
-                usage = result.scalar_one_or_none()
-
-                if usage:
-                    # We still update usage to show it's active, but ignore cooldown
-                    usage.last_used_at = now
-                    usage.use_count += 1
-                    await session.commit()
-                    return kw
-                else:
-                    new_usage = KeywordUsage(keyword=kw, last_used_at=now, use_count=1)
-                    session.add(new_usage)
-                    await session.commit()
-                    return kw
+        # Wrap around if index exceeds list length
+        if self._current_index >= len(keywords):
+            self._current_index = 0
         
-        return None
+        kw = keywords[self._current_index]
+        self._current_index += 1
+        
+        # Track usage in DB (for stats, not for limiting)
+        async for session in get_db():
+            stmt = select(KeywordUsage).where(KeywordUsage.keyword == kw)
+            result = await session.execute(stmt)
+            usage = result.scalar_one_or_none()
+
+            if usage:
+                usage.last_used_at = now
+                usage.use_count += 1
+            else:
+                session.add(KeywordUsage(keyword=kw, last_used_at=now, use_count=1))
+            await session.commit()
+        
+        return kw
 
     async def preview(self, limit: int = 10) -> List[str]:
         """
-        Preview the next N queries that would be generated, checking cooldowns but not marking usage.
+        Preview the next N queries that would be generated.
         """
         keywords = self._get_keywords()
-        now = datetime.now(timezone.utc)
         available = []
         
-        async for session in get_db():
-            for kw in keywords:
-                if len(available) >= limit:
-                    break
-                
-                stmt = select(KeywordUsage).where(KeywordUsage.keyword == kw)
-                result = await session.execute(stmt)
-                usage = result.scalar_one_or_none()
-
-                if usage:
-                    if now - usage.last_used_at >= self.cooldown:
-                        available.append(f"{kw} (Ready)")
-                    else:
-                        # Skip or show as cooldowned? The prompt says "prints next N planned queries". 
-                        # Usually implies the ones that WOULD run.
-                        # So skip cooldowns.
-                        pass
-                else:
-                    available.append(f"{kw} (New)")
+        idx = self._current_index
+        for _ in range(min(limit, len(keywords))):
+            if idx >= len(keywords):
+                idx = 0
+            available.append(f"{keywords[idx]} (Next)")
+            idx += 1
         
         return available

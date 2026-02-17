@@ -132,18 +132,15 @@ async def _monitor() -> None:
         while not sig_handler.check_shutdown:
             if bot_service: await bot_service.wait_if_paused()
 
-            # 5. Group Discovery
-            typer.secho(f"🔍 Discovery cycle {iteration} started...", fg=typer.colors.BLUE)
+            # Discovery
+            typer.secho(f"🔍 Cycle {iteration} | Qidiruv boshlandi...", fg=typer.colors.BLUE)
             await discovery_service.run(iterations=10, sig_handler=sig_handler)
 
-            # 6. Global Cycle Delay
+            # Cycle delay (responsive — can be interrupted by /resume)
             iteration += 1
             cycle_delay = settings.service.scheduler_interval_seconds
-            await sig_handler.sleep(cycle_delay)
-            typer.echo("💡 Use /resume in Telegram to start immediately.")
+            typer.secho(f"✅ Cycle {iteration-1} tugadi. {cycle_delay}s kutish...", fg=typer.colors.GREEN)
             
-            # Wait for delay OR until resume if paused
-            total_sleep = 0
             end_sleep_time = asyncio.get_running_loop().time() + cycle_delay
             
             while not sig_handler.check_shutdown:
@@ -156,7 +153,6 @@ async def _monitor() -> None:
                 if remaining <= 0:
                     break
                     
-                # Responsive sleep: wait for shutdown OR manual resume OR timeout
                 sleep_duration = min(10, remaining)
                 tasks = [asyncio.create_task(sig_handler.sleep(sleep_duration))]
                 if bot_service:
@@ -167,11 +163,12 @@ async def _monitor() -> None:
                 
                 if bot_service and bot_service.manual_resume_event.is_set():
                     bot_service.manual_resume_event.clear()
-                    await bot_service.bot_client.send_message(
-                        settings.telegram.authorized_user_id,
-                        "⚙️ Discovery qayta ishga tushdi..."
-                    )
-                    break # Skip remaining delay
+                    if bot_service.bot_client:
+                        await bot_service.bot_client.send_message(
+                            settings.telegram.authorized_user_id,
+                            "⚙️ Discovery qayta ishga tushdi..."
+                        )
+                    break
                 
                 if sig_handler.check_shutdown:
                     break
@@ -185,7 +182,6 @@ async def _monitor() -> None:
             bot_task.cancel()
         await client.stop()
         typer.echo("🔌 Disconnected.")
-@app.command()
 
 
 @app.command()
