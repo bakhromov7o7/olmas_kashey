@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Any
 from loguru import logger
 from sqlalchemy import select, update, func
 
@@ -8,8 +8,9 @@ from olmas_kashey.telegram.client import OlmasClient
 from olmas_kashey.db.session import get_db
 
 class MembershipService:
-    def __init__(self, client: OlmasClient):
+    def __init__(self, client: OlmasClient, bot: Optional[Any] = None):
         self.client = client
+        self.bot = bot
 
     async def add_to_allowlist(self, target: str, note: Optional[str] = None) -> bool:
         """Add a target (username/id) to allowlist."""
