@@ -6,6 +6,7 @@ from olmas_kashey.core.settings import settings
 
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.postgresql import insert as pg_insert 
 # Note: sqlite doesn't support pg_insert properly for upsert in same syntax usually, 
 # but generic sqlalchemy 2.0 has support or we check existence.
@@ -125,7 +126,7 @@ class GroupDiscoveryService:
                         continue
 
                     # Upsert Entity
-                    stmt = select(Entity).where(Entity.tg_id == int(classified.tg_id))
+                    stmt = select(Entity).where(Entity.tg_id == int(classified.tg_id)).options(selectinload(Entity.memberships))
                     result = await session.execute(stmt)
                     existing = result.scalar_one_or_none()
                     

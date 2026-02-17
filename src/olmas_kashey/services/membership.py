@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Any
 from loguru import logger
 from sqlalchemy import select, update, func
+from sqlalchemy.orm import selectinload
 
 from olmas_kashey.db.models import AllowlistItem, Entity, Membership, MembershipState, Event, EntityKind
 from olmas_kashey.telegram.client import OlmasClient
@@ -70,7 +71,7 @@ class MembershipService:
             stmt = select(Entity).outerjoin(Membership).where(
                 (Entity.username.in_(allowed_usernames)) | (Entity.tg_id.in_(allowed_ids)),
                 (Membership.state == None) | (Membership.state == MembershipState.NOT_JOINED)
-            )
+            ).options(selectinload(Entity.memberships))
             
             candidates = (await session.execute(stmt)).scalars().all()
             
