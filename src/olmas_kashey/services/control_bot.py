@@ -60,6 +60,28 @@ class ControlBotService:
         # Start scheduled reports
         asyncio.create_task(self._report_scheduler())
         
+        # Set bot command menu
+        try:
+            from telethon import functions, types
+            await self.bot_client(functions.bots.SetBotCommandsRequest(
+                scope=types.BotCommandScopeDefault(),
+                lang_code='',
+                commands=[
+                    types.BotCommand(command='status', description='📊 Bot holati va statistika'),
+                    types.BotCommand(command='pause', description='⏸️ To\'xtatish (Cheksiz)'),
+                    types.BotCommand(command='resume', description='▶️ Davom ettirish'),
+                    types.BotCommand(command='sleep', description='💤 Vaqtli uyquga yuborish'),
+                    types.BotCommand(command='eco', description='🐢 Ekonom rejimni yoqish/o\'chirish'),
+                    types.BotCommand(command='check_groups', description='🔍 Guruhlarni tekshirish (Manual)'),
+                    types.BotCommand(command='set_interval', description='⏱️ Batch intervalni sozlash (sekund)'),
+                    types.BotCommand(command='set_cycle', description='🔄 Cycle delayni sozlash (sekund)'),
+                    types.BotCommand(command='id', description='🆔 ID ni aniqlash'),
+                ]
+            ))
+            logger.info("Bot command menu updated.")
+        except Exception as e:
+            logger.error(f"Failed to set bot commands: {e}")
+        
         @self.bot_client.on(events.NewMessage(pattern=r'^/start(@\w+)?(\s|$)'))
         async def start_handler(event):
             logger.info(f"Command /start received from {event.sender_id}")

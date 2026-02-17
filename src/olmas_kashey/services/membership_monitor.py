@@ -52,7 +52,7 @@ class MembershipMonitor:
                 logger.info("No joined groups to monitor.")
                 return
 
-            logger.info(f"Checking status for {len(memberships)} joined groups...")
+            logger.debug(f"Checking status for {len(memberships)} joined groups...")
             
             for mem in memberships:
                 # We need Entity ID or Username to check. Membership has relation to Entity.
