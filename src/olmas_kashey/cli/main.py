@@ -130,39 +130,16 @@ async def _monitor() -> None:
     try:
         iteration = 1
         while not sig_handler.check_shutdown:
-            typer.secho(f"\n--- Cycle {iteration} ---", fg=typer.colors.BRIGHT_BLACK, bold=True)
-            
-            if bot_service: 
-                await bot_service.wait_if_paused()
-
-            # 2. Health Check
-            typer.echo("🩺 Checking account health...")
-            is_healthy = await health_monitor.check_health()
-            if not is_healthy:
-                typer.secho(f"⚠️  Account Restricted: {health_monitor.restriction_reason}", fg=typer.colors.RED, bold=True)
-                typer.echo("⏸️  Automation paused for 1 hour...")
-                if await sig_handler.sleep(3600):
-                    break
-                continue
-            
             if bot_service: await bot_service.wait_if_paused()
-
-            if bot_service: await bot_service.wait_if_paused()
-
-            # 4. Process Pending Joins
-            typer.echo("👥 Processing pending joins from allowlist...")
-            await membership_service.process_joins()
 
             # 5. Group Discovery
-            if bot_service: await bot_service.wait_if_paused()
-            typer.secho(f"🔍 Running discovery cycle ({iteration})...", fg=typer.colors.BLUE)
-            await discovery_service.run(iterations=5, sig_handler=sig_handler)
+            typer.secho(f"🔍 Discovery cycle {iteration} started...", fg=typer.colors.BLUE)
+            await discovery_service.run(iterations=10, sig_handler=sig_handler)
 
             # 6. Global Cycle Delay
             iteration += 1
             cycle_delay = settings.service.scheduler_interval_seconds
-            typer.secho(f"🏁 Cycle {iteration-1} complete.", fg=typer.colors.GREEN)
-            typer.echo(f"💤 Next cycle in {cycle_delay} seconds.")
+            await sig_handler.sleep(cycle_delay)
             typer.echo("💡 Use /resume in Telegram to start immediately.")
             
             # Wait for delay OR until resume if paused

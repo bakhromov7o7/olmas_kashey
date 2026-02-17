@@ -26,49 +26,26 @@ class QueryPlanner:
 
     async def get_next_query(self) -> Optional[str]:
         """
-        Returns the next available keyword that satisfies cooldowns and global rate limits.
-        Returns None if no keyword is available or global limit reached.
+        Returns the next keyword in order. Limits and cooldowns removed by user request.
         """
         keywords = self._get_keywords()
         now = datetime.now(timezone.utc)
-        one_hour_ago = now - timedelta(hours=1)
-        
-        # Global Rate Limit Check
-        # We can configure this in settings, for now hardcoded or passed in __init__
-        # "global max searches per hour" -> Example: 20
-        MAX_SEARCHES_PER_HOUR = 20 
         
         async for session in get_db():
-            # Check global usage in last hour
-            stmt = select(KeywordUsage).where(KeywordUsage.last_used_at > one_hour_ago)
-            result = await session.execute(stmt)
-            recent_usage_count = len(result.scalars().all()) # Simple count
-            
-            if recent_usage_count >= MAX_SEARCHES_PER_HOUR:
-                logger.warning("Global search rate limit reached.")
-                return None
-
+            # Find the first keyword that hasn't been used in this specific run or just pick one.
+            # We still use KeywordUsage to keep track but ignore the cooldown logic.
             for kw in keywords:
-                # Check DB for last usage
                 stmt = select(KeywordUsage).where(KeywordUsage.keyword == kw)
                 result = await session.execute(stmt)
                 usage = result.scalar_one_or_none()
 
                 if usage:
-                    last_used = usage.last_used_at
-                    if last_used.tzinfo is None:
-                        last_used = last_used.replace(tzinfo=timezone.utc)
-                        
-                    if now - last_used < self.cooldown:
-                        continue # Cooling down
-                    
-                    # Ready to use again
+                    # We still update usage to show it's active, but ignore cooldown
                     usage.last_used_at = now
                     usage.use_count += 1
                     await session.commit()
                     return kw
                 else:
-                    # Never used
                     new_usage = KeywordUsage(keyword=kw, last_used_at=now, use_count=1)
                     session.add(new_usage)
                     await session.commit()

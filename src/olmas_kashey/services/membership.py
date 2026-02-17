@@ -10,8 +10,6 @@ from olmas_kashey.db.session import get_db
 class MembershipService:
     def __init__(self, client: OlmasClient):
         self.client = client
-        self.max_joins_per_day = 5 # Configurable
-        self.join_cooldown_hours = 24 
 
     async def add_to_allowlist(self, target: str, note: Optional[str] = None) -> bool:
         """Add a target (username/id) to allowlist."""
@@ -56,20 +54,7 @@ class MembershipService:
         Respects rate limits.
         """
         async for session in get_db():
-            # 1. Check daily limit
-            now = datetime.now(timezone.utc)
-            one_day_ago = now - timedelta(days=1)
-            
-            # Count successful joins in last 24h
-            stmt = select(func.count(Membership.id)).where(
-                Membership.state == MembershipState.JOINED,
-                Membership.joined_at >= one_day_ago
-            )
-            joins_today = (await session.execute(stmt)).scalar_one()
-            
-            if joins_today >= self.max_joins_per_day:
-                logger.warning(f"Daily join limit reached ({joins_today}/{self.max_joins_per_day}). Skipping joins.")
-                return
+            # Join limit check removed as requested by user.
 
             # 2. Fetch Allowlist
             allowlist_items = (await session.execute(select(AllowlistItem))).scalars().all()

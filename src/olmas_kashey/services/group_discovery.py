@@ -43,7 +43,7 @@ class GroupDiscoveryService:
 
             keyword = await self.planner.get_next_query()
             if not keyword:
-                logger.info("No query available (rate limit or cooldown). Stopping discovery run.")
+                logger.debug("No query available (rate limit or cooldown). Stopping discovery run.")
                 break
             
             try:
@@ -60,7 +60,7 @@ class GroupDiscoveryService:
                 if self.bot and getattr(self.bot, 'eco_mode', False):
                     delay = max(120, delay)
                 
-                logger.info(f"Iteration {i+1} complete. Waiting {delay}s before next batch...")
+                logger.debug(f"Iteration {i+1} complete. Waiting {delay}s before next batch...")
                 
                 if sig_handler or self.bot:
                     end_time = asyncio.get_running_loop().time() + delay
