@@ -454,14 +454,19 @@ class ControlBotService:
             
             return report
 
-    async def notify_flood_wait(self, seconds: float):
+    async def notify_flood_wait(self, seconds: float, is_smart: bool = False):
         if not self.bot_client or not settings.telegram.authorized_user_id:
             return
         mins = int(seconds // 60)
         secs = int(seconds % 60)
         time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-        msg = (f"⚠️ **FloodWait!**\n\n"
-               f"Bot {time_str} kutishga majbur.")
+        
+        if is_smart:
+            msg = (f"⚠️ **FloodWait!**\n\n"
+                   f"🧠 **AI (Smart Rejim)** tahliliga ko'ra, bot qamalmasligi uchun kutilmagan {time_str} uxlashiga to'g'ri keldi.")
+        else:
+            msg = (f"⚠️ **FloodWait!**\n\n"
+                   f"Bot {time_str} kutishga majbur.")
         buttons = [
             [Button.inline("⏸️ Pauza", b"pause")],
             [Button.inline("✅ OK", b"cancel")]

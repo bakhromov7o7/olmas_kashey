@@ -102,9 +102,11 @@ class OlmasClient:
                 return result
             except errors.FloodWaitError as e:
                 # 1. Smart Mode: AI Calculates sleep
+                is_smart = False
                 if self.bot and getattr(self.bot, 'smart_mode', False):
                     logger.info(f"Smart Mode active: Asking AI for FloodWait ({e.seconds}s) strategy...")
                     wait_time = await smart_advisor.get_floodwait_sleep(e.seconds)
+                    is_smart = True
                     
                 # 2. Eco Mode: Double the sleep time
                 elif self.bot and getattr(self.bot, 'eco_mode', False):
@@ -118,7 +120,7 @@ class OlmasClient:
                 logger.warning(f"FloodWaitError: sleeping for {wait_time:.2f}s (Attempt {attempt+1}/{max_attempts})")
                 
                 if self.bot and hasattr(self.bot, 'notify_flood_wait'):
-                    asyncio.create_task(self.bot.notify_flood_wait(wait_time))
+                    asyncio.create_task(self.bot.notify_flood_wait(wait_time, is_smart=is_smart))
 
                 attempt += 1
                 if attempt >= max_attempts:
