@@ -23,6 +23,7 @@ from olmas_kashey.telegram.client import OlmasClient
 from olmas_kashey.services.discovery_pipeline import DiscoveryPipeline
 from olmas_kashey.services.query_plan import QueryPlanner
 from olmas_kashey.services.control_bot import TopicsChangedInterruption
+from olmas_kashey.services.smart_advisor import smart_advisor
 
 class GroupDiscoveryService:
     def __init__(self, client: OlmasClient, planner: QueryPlanner, bot: Optional[Any] = None):
@@ -180,7 +181,14 @@ class GroupDiscoveryService:
 
                     if mem_to_join and settings.service.enable_auto_join:
                         try:
-                            await asyncio.sleep(2)  # Rate limit delay
+                            # Dynamic AI delay vs Static delay
+                            if self.bot and getattr(self.bot, 'smart_mode', False):
+                                delay = await smart_advisor.get_join_delay()
+                                logger.info(f"Smart Mode active: Waiting {delay:.1f}s before joining {classified.username or classified.tg_id}")
+                                await asyncio.sleep(delay)
+                            else:
+                                await asyncio.sleep(2)  # Normal Rate limit delay
+                                
                             await self.client.join_channel(classified.username or classified.tg_id)
                             
                             # Update membership state

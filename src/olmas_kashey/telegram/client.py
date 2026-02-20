@@ -10,6 +10,7 @@ from loguru import logger
 from olmas_kashey.core.settings import settings
 from olmas_kashey.core.cache import TTLCache
 from olmas_kashey.utils.normalize import normalize_link, normalize_username
+from olmas_kashey.services.smart_advisor import smart_advisor
 
 R = TypeVar("R")
 
@@ -100,12 +101,19 @@ class OlmasClient:
                 self._flood_backoff_level = 0  # Reset on success
                 return result
             except errors.FloodWaitError as e:
-                wait_time = e.seconds + random.uniform(1, settings.telegram_limits.flood_jitter_seconds + 1)
-                
-                # Eco-mode: Double the sleep time for safety
-                if self.bot and getattr(self.bot, 'eco_mode', False):
-                    wait_time *= 2
+                # 1. Smart Mode: AI Calculates sleep
+                if self.bot and getattr(self.bot, 'smart_mode', False):
+                    logger.info(f"Smart Mode active: Asking AI for FloodWait ({e.seconds}s) strategy...")
+                    wait_time = await smart_advisor.get_floodwait_sleep(e.seconds)
+                    
+                # 2. Eco Mode: Double the sleep time
+                elif self.bot and getattr(self.bot, 'eco_mode', False):
+                    wait_time = e.seconds * 2.0 + random.uniform(1, settings.telegram_limits.flood_jitter_seconds + 1)
                     logger.info(f"Eco-mode active: doubling FloodWait sleep to {wait_time:.2f}s")
+                    
+                # 3. Normal Mode: Sleep + Jitter
+                else:
+                    wait_time = e.seconds + random.uniform(1, settings.telegram_limits.flood_jitter_seconds + 1)
 
                 logger.warning(f"FloodWaitError: sleeping for {wait_time:.2f}s (Attempt {attempt+1}/{max_attempts})")
                 
