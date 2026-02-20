@@ -27,12 +27,18 @@ start() {
 stop() {
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
-        echo "Bot to'xtatilyapti (PID: $PID)..."
-        kill $PID 2>/dev/null
+        echo "Bot (PID: $PID) majburiy to'xtatilyapti..."
+        kill -9 $PID 2>/dev/null
         rm "$PID_FILE"
     fi
-    # Backup: Kill any remaining olmas_kashey processes
-    pkill -f "$APP_NAME" 2>/dev/null
+    # Backup: Force Kill any remaining olmas_kashey processes
+    pkill -9 -f "$APP_NAME" 2>/dev/null
+    
+    # Also aggressively kill anything holding the bot_session file if fuser is available
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k -9 bot_session.session* 2>/dev/null
+    fi
+    
     echo "Bot to'xtatildi."
 }
 
