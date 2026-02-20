@@ -32,8 +32,8 @@ class ControlBotService:
         self._timed_pause_task: Optional[asyncio.Task] = None
         self.manual_resume_event = asyncio.Event()
         self.timed_pause_until: Optional[float] = None
-        self.eco_mode = False
-        self.smart_mode = False
+        self.eco_mode = getattr(settings.service, 'eco_mode', False)
+        self.smart_mode = settings.service.smart_mode
 
     async def start(self):
         if not settings.telegram.bot_token:
@@ -241,8 +241,12 @@ class ControlBotService:
             
             self.eco_mode = not self.eco_mode
             if self.eco_mode:
-                self.smart_mode = False # Mutually exclusive
+                self.smart_mode = False 
+                self._update_env_file("SERVICE__SMART_MODE", "false")
+                settings.service.smart_mode = False
                 
+            self._update_env_file("SERVICE__ECO_MODE", str(self.eco_mode).lower())
+            
             status = "yoqildi 🐢" if self.eco_mode else "o'chirildi 🚀"
             msg = f"🛡️ **Ekonom rejim {status}.**\n\n"
             if self.eco_mode:
@@ -257,12 +261,16 @@ class ControlBotService:
             
             self.smart_mode = not self.smart_mode
             if self.smart_mode:
-                self.eco_mode = False # Mutually exclusive
+                self.eco_mode = False 
+                self._update_env_file("SERVICE__ECO_MODE", "false")
                 
+            self._update_env_file("SERVICE__SMART_MODE", str(self.smart_mode).lower())
+            settings.service.smart_mode = self.smart_mode
+            
             status = "yoqildi 🧠" if self.smart_mode else "o'chirildi 🚀"
             msg = f"🤖 **Smart AI Rejim {status}.**\n\n"
             if self.smart_mode:
-                msg += "• Kutish vaqtlari AI tomonidan hisoblanadi\n• Insoniy xulq-atvor simulyatsiyasi aktiv"
+                msg += "• Kutish vaqtlari AI tomonidan hisoblanadi\n• Insoniy xulq-atvor simulyatsiyasi aktiv\n• Rebootdan keyin ham saqlanib qoladi"
             await event.respond(msg)
             raise events.StopPropagation
 
@@ -463,10 +471,12 @@ class ControlBotService:
         
         if is_smart:
             msg = (f"⚠️ **FloodWait!**\n\n"
-                   f"🧠 **AI (Smart Rejim)** tahliliga ko'ra, bot qamalmasligi uchun kutilmagan {time_str} uxlashiga to'g'ri keldi.")
+                   f"🧠 **AI (Smart Rejim)** tahliliga ko'ra, bot qamalmasligi uchun kutilmagan {time_str} uxlashiga to'g'ri keldi.\n\n"
+                   f"⏳ **Kutish tugagach, bot avtomatik ravishda ishini davom ettiradi.** Sizdan hech qanday harakat talab qilinmaydi.")
         else:
             msg = (f"⚠️ **FloodWait!**\n\n"
-                   f"Bot {time_str} kutishga majbur.")
+                   f"Bot {time_str} kutishga majbur.\n\n"
+                   f"⏳ **Ushbu vaqt o'tgach bot avtomatik davom etadi.**")
         buttons = [
             [Button.inline("⏸️ Pauza", b"pause")],
             [Button.inline("✅ OK", b"cancel")]
