@@ -39,9 +39,9 @@ Output MUST be a valid JSON object. Do not include markdown formatting or explan
 
         try:
             user_prompt = f"""
-Telegram just gave a FloodWait error of {floodwait_seconds} seconds.
-Calculate a new sleep duration that is slightly longer than the required wait, adding a realistic human-like delay.
-The new sleep should be random, but safe. 
+Telegram just gave a strict FloodWait error demanding we wait EXACTLY {floodwait_seconds} seconds.
+Calculate a new sleep duration that adds a tiny, realistic human-like delay (10 to 60 extra seconds) on top of the required {floodwait_seconds} seconds penalty.
+Do NOT make the wait extremely long, just add a few seconds of human jitter.
 
 Return JSON:
 {{
@@ -119,10 +119,9 @@ Return JSON:
 
     def _fallback_floodwait(self, floodwait_seconds: int) -> float:
         """Fallback calculation if AI fails."""
-        padding = random.uniform(5.0, 30.0)
-        # Add a multiplier based on the length of the wait (longer waits get more padding)
-        multiplier = 1.0 + (random.random() * 0.5) # 1.0 to 1.5x
-        calculated = (floodwait_seconds * multiplier) + padding
+        # Just add a human-like jitter on top of the MANDATORY wait
+        padding = random.uniform(5.0, 45.0)
+        calculated = floodwait_seconds + padding
         logger.info(f"SmartAdvisor (Fallback): Calculated {calculated:.1f}s for FloodWait {floodwait_seconds}s")
         return calculated
 
