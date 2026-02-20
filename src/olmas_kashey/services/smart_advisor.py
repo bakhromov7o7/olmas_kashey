@@ -85,7 +85,7 @@ Return JSON:
                 delay = float(response["recommended_join_delay_seconds"])
                 # Sanity check bounds
                 if 1.0 <= delay <= 30.0:
-                    logger.debug(f"SmartAdvisor (AI): Recommended join delay {delay:.1f}s")
+                    logger.info(f"SmartAdvisor (AI): Recommended join delay {delay:.1f}s")
                     return delay
                     
             return self._fallback_join_delay()
@@ -113,7 +113,7 @@ Return JSON:
                 if content:
                     return json.loads(content)
             except Exception as e:
-                logger.debug(f"SmartAdvisor API error with model {model}: {e}")
+                logger.info(f"SmartAdvisor API error with model {model}: {e}")
                 continue # Try next model
         return None
 
@@ -123,13 +123,13 @@ Return JSON:
         # Add a multiplier based on the length of the wait (longer waits get more padding)
         multiplier = 1.0 + (random.random() * 0.5) # 1.0 to 1.5x
         calculated = (floodwait_seconds * multiplier) + padding
-        logger.debug(f"SmartAdvisor (Fallback): Calculated {calculated:.1f}s for FloodWait {floodwait_seconds}s")
+        logger.info(f"SmartAdvisor (Fallback): Calculated {calculated:.1f}s for FloodWait {floodwait_seconds}s")
         return calculated
 
     def _fallback_join_delay(self) -> float:
         """Fallback logic if AI fails."""
         delay = random.uniform(3.0, 10.0)
-        logger.debug(f"SmartAdvisor (Fallback): Calculated join delay {delay:.1f}s")
+        logger.info(f"SmartAdvisor (Fallback): Calculated join delay {delay:.1f}s")
         return delay
 
 # Singleton instance

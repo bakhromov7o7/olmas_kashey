@@ -176,8 +176,19 @@ class GroupDiscoveryService:
                     mem_to_join = None
                     if not existing:
                         mem_to_join = mem # The new one we just created
-                    elif existing.memberships and existing.memberships.state == MembershipState.NOT_JOINED:
-                        mem_to_join = existing.memberships
+                    else:
+                        if not existing.memberships:
+                            # Auto-heal: create missing membership record for old legacy database entities
+                            new_mem = Membership(
+                                entity_id=existing.id,
+                                state=MembershipState.NOT_JOINED,
+                                last_checked_at=now
+                            )
+                            session.add(new_mem)
+                            existing.memberships = new_mem
+                            mem_to_join = new_mem
+                        elif existing.memberships.state == MembershipState.NOT_JOINED:
+                            mem_to_join = existing.memberships
 
                     if mem_to_join and settings.service.enable_auto_join:
                         try:
