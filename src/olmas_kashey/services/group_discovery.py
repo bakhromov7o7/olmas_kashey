@@ -24,12 +24,14 @@ from olmas_kashey.services.discovery_pipeline import DiscoveryPipeline
 from olmas_kashey.services.query_plan import QueryPlanner
 from olmas_kashey.services.control_bot import TopicsChangedInterruption
 from olmas_kashey.services.smart_advisor import smart_advisor
+from olmas_kashey.services.link_crawler import LinkCrawlerService
 
 class GroupDiscoveryService:
     def __init__(self, client: OlmasClient, planner: QueryPlanner, bot: Optional[Any] = None):
         self.client = client
         self.planner = planner
         self.pipeline = DiscoveryPipeline(client, bot=bot)
+        self.crawler = LinkCrawlerService(client)
         self.bot = bot
 
     async def run(self, iterations: int = 1, sig_handler: Optional[Any] = None) -> None:
@@ -213,12 +215,10 @@ class GroupDiscoveryService:
                                 await self.bot.notify_join(classified.title or classified.username, classified.username)
                             
                             # Emit join event
-                            join_event = Event(
-                                entity_id=entity_id,
-                                type="auto_joined",
-                                payload={"source_keyword": keyword}
-                            )
                             session.add(join_event)
+
+                            # 🚀 Recursive Discovery: Crawl newly joined group for more links
+                            asyncio.create_task(self._crawl_and_save_links(classified.username or classified.tg_id, keyword))
                         except Exception as join_err:
                             logger.warning(f"Failed to auto-join {classified.title}: {join_err}")
                 
@@ -252,3 +252,62 @@ class GroupDiscoveryService:
             # FloodWait usually implies we should stop for a while globally, 
             # but client wrapper sleeps. 
             pass
+
+    async def _crawl_and_save_links(self, target: Union[int, str], source_keyword: str):
+        """Background task to crawl a group and save found links as potential candidates."""
+        try:
+            logger.info(f"Background crawling started for {target}")
+            # Wait a bit to not be too aggressive immediately after join
+            await asyncio.sleep(random.uniform(5, 15))
+            
+            raw_links = await self.crawler.crawl_group(target)
+            if not raw_links:
+                return
+                
+            classified_entities = await self.crawler.filter_and_classify(raw_links)
+            
+            async for session in get_db():
+                new_count = 0
+                for entity in classified_entities:
+                    # Check if exists
+                    stmt = select(Entity).where(Entity.tg_id == int(entity.tg_id))
+                    res = await session.execute(stmt)
+                    if res.scalar_one_or_none():
+                        continue
+                        
+                    # Save new candidate
+                    now = datetime.now(timezone.utc)
+                    new_ent = Entity(
+                        tg_id=int(entity.tg_id),
+                        username=entity.username,
+                        title=entity.title,
+                        kind=entity.kind,
+                        discovered_at=now,
+                        last_seen_at=now
+                    )
+                    session.add(new_ent)
+                    await session.flush()
+                    
+                    # Init membership
+                    mem = Membership(
+                        entity_id=new_ent.id,
+                        state=MembershipState.NOT_JOINED,
+                        last_checked_at=now
+                    )
+                    session.add(mem)
+                    
+                    # Log event
+                    event = Event(
+                        entity_id=new_ent.id,
+                        type="entity_crawled",
+                        payload={"source_group": str(target), "original_keyword": source_keyword}
+                    )
+                    session.add(event)
+                    new_count += 1
+                    
+                await session.commit()
+                if new_count > 0:
+                    logger.info(f"Crawler saved {new_count} new candidates from {target}")
+                    
+        except Exception as e:
+            logger.error(f"Background crawl failed for {target}: {e}")

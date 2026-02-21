@@ -473,14 +473,15 @@ class ControlBotService:
             msg = (f"⚠️ **FloodWait!**\n\n"
                    f"🧠 **AI (Smart Rejim)** tahliliga ko'ra, bot qamalmasligi uchun kutilmagan {time_str} uxlashiga to'g'ri keldi.\n\n"
                    f"⏳ **Kutish tugagach, bot avtomatik ravishda ishini davom ettiradi.** Sizdan hech qanday harakat talab qilinmaydi.")
+            buttons = None # No buttons for Smart Mode to avoid asking user
         else:
             msg = (f"⚠️ **FloodWait!**\n\n"
                    f"Bot {time_str} kutishga majbur.\n\n"
                    f"⏳ **Ushbu vaqt o'tgach bot avtomatik davom etadi.**")
-        buttons = [
-            [Button.inline("⏸️ Pauza", b"pause")],
-            [Button.inline("✅ OK", b"cancel")]
-        ]
+            buttons = [
+                [Button.inline("⏸️ Pauza", b"pause")],
+                [Button.inline("✅ OK", b"cancel")]
+            ]
         try:
             await self.bot_client.send_message(
                 settings.telegram.authorized_user_id,

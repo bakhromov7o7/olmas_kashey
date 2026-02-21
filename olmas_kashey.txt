@@ -1,0 +1,32 @@
+🚀 Olmas Kashey — Telegram guruhlarini topish va boshqarish tizimi
+
+Olmas Kashey — bu Telegram platformasida guruhlar va kanallarni avtomatik qidirish, tahlil qilish va ularga a'zo bo'lish uchun mo'ljallangan kuchli avtomatlashtirish tizimi.
+
+Ushbu loyihaning asosiy imkoniyatlari:
+
+1. 🔍 Guruhlarni avtomatik qidirish (Discovery):
+   - Tanlangan мавзуlar (topic) va kalit so'zlar asosida yangi guruh va kanallarni avtomatik topadi.
+   - Topilgan barcha manbalarni bazaga saqlaydi va takrorlanishlardan himoyalaydi.
+
+2. 🤖 Smart AI Rejimi (Smart Mode):
+   - Sun'iy intellekt (Llama 3/Groq) yordamida "insoniy" xatti-harakatlarni simulyatsiya qiladi.
+   - Guruhlarga qo'shilish vaqtlarini va Telegram cheklovlarini (FloodWait) AI orqali aqlli hisoblaydi. Bu account bloklanish xavfini keskin kamaytiradi.
+
+3. 📱 Masofaviy boshqaruv (Control Bot):
+   Maxsus Telegram bot orqali tizimni to'liq nazorat qilish mumkin:
+   - /status — Real vaqtdagi statistika va account holati.
+   - /pause / /resume — Qidiruvni to'xtatish yoki davom ettirish.
+   - /sleep — Botni ma'lum vaqtga (10min dan 12soatgacha) uyquga yuborish.
+   - /set_topics — Qidiruv mavzularini botning o'zidan o'zgartirish.
+   - /eco — Energiyani tejash va xavfsizlikni oshirish rejimi.
+
+4. 📊 Monitoring va Hisobotlar:
+   - Kuniga ikki marta (10:00 va 18:00) bajarilgan ishlar bo'yicha hisobot yuboradi.
+   - Account sog'lig'ini (Health Monitoring) doimiy nazorat qiladi.
+   - Qaysi guruhlarga qo'shilgani, qaysilaridan haydalgani (ban) haqida aniq ma'lumot beradi.
+
+5. 🛡️ Xavfsizlik:
+   - FloodWait va boshqa Telegram cheklovlariga avtomatik moslashadi.
+   - Allowlist tizimi orqali ma'lum guruh yoki foydalanuvchilarni e'tibordan chetda qoldirish imkonini beradi.
+
+Olmas Kashey — bu shunchaki bot emas, balki Telegramda xavfsiz va samarali marketing yoki monitoring olib borish uchun to'liq ekotizimdir.
