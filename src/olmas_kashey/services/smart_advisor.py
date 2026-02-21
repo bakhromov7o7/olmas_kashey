@@ -48,43 +48,49 @@ Current Account Health Context:
 - Eco Mode: {context.get('eco_mode', False)}
 """
             user_prompt = f"""
-Telegram just gave a strict FloodWait error demanding we wait EXACTLY {floodwait_seconds} seconds.
+Telegram has imposed a penalty wait of {floodwait_seconds} seconds. 
 {context_str}
-Your task is to analyze this situation and decide on a safe sleep duration.
 
-CRITICAL RULES:
-1. NEVER recommend a time that is less than {floodwait_seconds + 30} seconds. 
-2. BE GENEROUS: Adding only a few seconds looks robotic. Telegram's AI will detect that you are just waiting for the penalty to expire.
-3. STRATEGIC DECISION:
-   - If the wait is short (<60s), add AT LEAST 30-60 seconds of extra rest.
-   - If the wait is long (>300s) OR health is poor, you MUST add a significant "Safety Margin". Add 5 to 20 EXTRA MINUTES (300 to 1200 seconds) on top of the penalty.
-   - If health is VERY poor (bans > 0), consider adding 1-2 hours.
+YOUR MISSION: Decide how long the bot should stay OFFLINE (Cooldown) to avoid being flagged as a bot.
 
-Output Example for {floodwait_seconds}s:
-{{
-    "recommended_sleep_seconds": {floodwait_seconds + 600},
-    "reasoning": "Account faolligi oshgan, cheklovdan so'ng 10 daqiqa qo'shimcha dam berish xavfsizroq."
-}}
+CRITICAL SAFETY RULES:
+1. **Never** just add seconds. Adding 10-60 seconds is USELESS and looks like a robot waiting for a timer.
+2. **Think like a human**: If you were blocked for 15 minutes, you wouldn't come back in 16 minutes. You would wait an hour or two.
+3. **MANDATORY OVERHEAD**: 
+   - For any penalty > 120s, you MUST add at least 30 to 120 EXTRA MINUTES of rest.
+   - For penalties > 600s, recommend staying offline for 2-6 hours.
+   - If 'ban_count' is > 0 or health is poor, stay offline for 12-24 hours.
+
+Analyze the metrics and recommend a TOTAL sleep duration (Penalty + Cooldown).
+The user wants the bot to "shut down" for a safe duration determined by YOU.
 
 Return JSON:
 {{
-    "recommended_sleep_seconds": <float>,
-    "reasoning": "<brief_explanation_in_uzbek>"
+    "total_off_time_seconds": <float>,
+    "extra_cooldown_minutes": <int>,
+    "reasoning": "<brief_explanation_in_uzbek_about_why_we_stay_offline_this_long>"
 }}
 """
             response = await self._call_ai(user_prompt)
-            if response and "recommended_sleep_seconds" in response:
-                recommended = float(response["recommended_sleep_seconds"])
+            if response and "total_off_time_seconds" in response:
+                recommended = float(response["total_off_time_seconds"])
                 
-                # 🛡️ HARD SAFETY FLOOR: 
-                # Never wait less than penalty + 10% + 30s to avoid looking robotic.
-                min_safe = floodwait_seconds * 1.1 + 30
-                if recommended < min_safe:
-                    logger.warning(f"SmartAdvisor (AI) was too aggressive ({recommended:.1f}s). Enforcing safety floor: {min_safe:.1f}s")
-                    recommended = min_safe
+                # 🛡️ AGGRESSIVE SAFETY FLOOR: 
+                # Avoid "The Robotic Interval": if penalty > 2 mins, add at least 30 mins (1800s) extra.
+                if floodwait_seconds > 120:
+                    min_safe = floodwait_seconds + 1800
+                    if recommended < min_safe:
+                        logger.warning(f"SmartAdvisor AI recommended too little ({recommended:.1f}s). Enforcing massive safety floor: {min_safe:.1f}s")
+                        recommended = min_safe
+                else:
+                    # For short waits, at least penalty + 2 mins
+                    min_safe = floodwait_seconds + 120
+                    if recommended < min_safe:
+                        recommended = min_safe
 
                 if recommended >= floodwait_seconds:
-                    logger.info(f"SmartAdvisor (AI): Recommended wait {recommended:.1f}s for FloodWait {floodwait_seconds}s. Reason: {response.get('reasoning')}")
+                    reason = response.get('reasoning', 'Human-like rest')
+                    logger.info(f"SmartAdvisor (AI): Strategic Cooldown {recommended/60:.1f}m for Penalty {floodwait_seconds/60:.1f}m. Reason: {reason}")
                     return recommended
                 
             return self._fallback_floodwait(floodwait_seconds)
