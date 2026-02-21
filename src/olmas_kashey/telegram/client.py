@@ -104,8 +104,13 @@ class OlmasClient:
                 # 1. Smart Mode: AI Calculates sleep
                 is_smart = False
                 if self.bot and getattr(self.bot, 'smart_mode', False):
-                    logger.info(f"Smart Mode active: Asking AI for FloodWait ({e.seconds}s) strategy...")
-                    wait_time = await smart_advisor.get_floodwait_sleep(e.seconds)
+                    # Fetch extra context for AI to make a better decision
+                    context = {}
+                    if hasattr(self.bot, 'get_health_context'):
+                        context = await self.bot.get_health_context()
+                        
+                    logger.info(f"Smart Mode active: Asking AI for FloodWait ({e.seconds}s) strategy with context...")
+                    wait_time = await smart_advisor.get_floodwait_sleep(e.seconds, context=context)
                     is_smart = True
                     
                 # 2. Eco Mode: Double the sleep time

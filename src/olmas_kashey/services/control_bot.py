@@ -462,6 +462,41 @@ class ControlBotService:
             
             return report
 
+    async def get_health_context(self) -> Dict[str, Any]:
+        """Provides a simplified health context for AI decision making."""
+        try:
+            # We use a subset of the logic from status report
+            uz_tz = timezone(timedelta(hours=5))
+            now_uz = datetime.now(uz_tz)
+            today_start_utc = now_uz.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+            
+            async for session in get_db():
+                joined_today = (await session.execute(select(func.count(Membership.id)).where(
+                    Membership.state == MembershipState.JOINED,
+                    Membership.joined_at >= today_start_utc
+                ))).scalar() or 0
+                
+                ban_count = (await session.execute(select(func.count(Membership.id)).where(
+                    Membership.state == MembershipState.REMOVED
+                ))).scalar() or 0
+                
+                is_healthy = True
+                if self.client and self.client.is_connected():
+                    monitor = HealthMonitor(self.client)
+                    is_healthy = await monitor.check_health()
+                
+                return {
+                    "joined_today": joined_today,
+                    "ban_count": ban_count,
+                    "is_healthy": is_healthy,
+                    "eco_mode": getattr(self, 'eco_mode', False),
+                    "smart_mode": getattr(self, 'smart_mode', False)
+                }
+        except Exception as e:
+            logger.error(f"Failed to get health context: {e}")
+            return {}
+        return {}
+
     async def notify_flood_wait(self, seconds: float, is_smart: bool = False):
         if not self.bot_client or not settings.telegram.authorized_user_id:
             return

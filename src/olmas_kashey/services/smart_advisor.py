@@ -30,7 +30,7 @@ Output MUST be a valid JSON object. Do not include markdown formatting or explan
             except Exception as e:
                 logger.error(f"Failed to initialize Groq client for SmartAdvisor: {e}")
 
-    async def get_floodwait_sleep(self, floodwait_seconds: int) -> float:
+    async def get_floodwait_sleep(self, floodwait_seconds: int, context: Optional[dict] = None) -> float:
         """
         Calculates a safe sleep duration when a FloodWaitError is encountered.
         """
@@ -38,22 +38,35 @@ Output MUST be a valid JSON object. Do not include markdown formatting or explan
             return self._fallback_floodwait(floodwait_seconds)
 
         try:
+            context_str = ""
+            if context:
+                context_str = f"""
+Current Account Health Context:
+- Groups joined today: {context.get('joined_today', 0)}
+- Lifetime bans/blocks: {context.get('ban_count', 0)}
+- Healthy status: {context.get('is_healthy', True)}
+- Eco Mode: {context.get('eco_mode', False)}
+"""
             user_prompt = f"""
 Telegram just gave a strict FloodWait error demanding we wait EXACTLY {floodwait_seconds} seconds.
-Calculate a new sleep duration that adds a tiny, realistic human-like delay (10 to 60 extra seconds) on top of the required {floodwait_seconds} seconds penalty.
-Do NOT make the wait extremely long, just add a few seconds of human jitter.
+{context_str}
+Your task is to analyze this situation and decide on a safe sleep duration.
+- If the wait is short (< 60s) and health is good, just add 10-20 seconds.
+- If the wait is long (> 300s) OR health is poor (many joins/bans), you SHOULD recommend a much longer "Strategic Cooldown" (e.g., adding 5-30 EXTRA minutes or even hours) to let the account rest and avoid a permanent ban.
+- The user prefers "Smart" automation - be conservative to save the account.
 
 Return JSON:
 {{
-    "recommended_sleep_seconds": <float>
+    "recommended_sleep_seconds": <float>,
+    "reasoning": "<brief_explanation_in_uzbek>"
 }}
 """
             response = await self._call_ai(user_prompt)
             if response and "recommended_sleep_seconds" in response:
                 recommended = float(response["recommended_sleep_seconds"])
                 # Sanity check: ensure it's at least the required wait
-                if recommended > floodwait_seconds:
-                    logger.info(f"SmartAdvisor (AI): Recommended wait {recommended:.1f}s for FloodWait {floodwait_seconds}s")
+                if recommended >= floodwait_seconds:
+                    logger.info(f"SmartAdvisor (AI): Recommended wait {recommended:.1f}s for FloodWait {floodwait_seconds}s. Reason: {response.get('reasoning')}")
                     return recommended
                 
             return self._fallback_floodwait(floodwait_seconds)
