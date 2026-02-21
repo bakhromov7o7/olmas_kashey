@@ -51,9 +51,20 @@ Current Account Health Context:
 Telegram just gave a strict FloodWait error demanding we wait EXACTLY {floodwait_seconds} seconds.
 {context_str}
 Your task is to analyze this situation and decide on a safe sleep duration.
-- If the wait is short (< 60s) and health is good, just add 10-20 seconds.
-- If the wait is long (> 300s) OR health is poor (many joins/bans), you SHOULD recommend a much longer "Strategic Cooldown" (e.g., adding 5-30 EXTRA minutes or even hours) to let the account rest and avoid a permanent ban.
-- The user prefers "Smart" automation - be conservative to save the account.
+
+CRITICAL RULES:
+1. NEVER recommend a time that is less than {floodwait_seconds + 30} seconds. 
+2. BE GENEROUS: Adding only a few seconds looks robotic. Telegram's AI will detect that you are just waiting for the penalty to expire.
+3. STRATEGIC DECISION:
+   - If the wait is short (<60s), add AT LEAST 30-60 seconds of extra rest.
+   - If the wait is long (>300s) OR health is poor, you MUST add a significant "Safety Margin". Add 5 to 20 EXTRA MINUTES (300 to 1200 seconds) on top of the penalty.
+   - If health is VERY poor (bans > 0), consider adding 1-2 hours.
+
+Output Example for {floodwait_seconds}s:
+{{
+    "recommended_sleep_seconds": {floodwait_seconds + 600},
+    "reasoning": "Account faolligi oshgan, cheklovdan so'ng 10 daqiqa qo'shimcha dam berish xavfsizroq."
+}}
 
 Return JSON:
 {{
@@ -64,7 +75,14 @@ Return JSON:
             response = await self._call_ai(user_prompt)
             if response and "recommended_sleep_seconds" in response:
                 recommended = float(response["recommended_sleep_seconds"])
-                # Sanity check: ensure it's at least the required wait
+                
+                # 🛡️ HARD SAFETY FLOOR: 
+                # Never wait less than penalty + 10% + 30s to avoid looking robotic.
+                min_safe = floodwait_seconds * 1.1 + 30
+                if recommended < min_safe:
+                    logger.warning(f"SmartAdvisor (AI) was too aggressive ({recommended:.1f}s). Enforcing safety floor: {min_safe:.1f}s")
+                    recommended = min_safe
+
                 if recommended >= floodwait_seconds:
                     logger.info(f"SmartAdvisor (AI): Recommended wait {recommended:.1f}s for FloodWait {floodwait_seconds}s. Reason: {response.get('reasoning')}")
                     return recommended
