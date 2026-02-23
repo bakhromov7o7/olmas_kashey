@@ -61,6 +61,11 @@ class DiscoverySettings(BaseSettings):
     negative_cache_ttl_seconds: int = Field(default=900, ge=0, description="TTL for negative query cache in seconds")
     entity_cache_ttl_seconds: int = Field(default=86400, ge=0, description="TTL for entity cache in seconds")
     
+    # Evolution & Adaptive Planning
+    evolution_threshold: int = Field(default=3, description="New groups found before triggering evolution")
+    max_keyword_age_days: int = Field(default=7, description="Max days a keyword stays fresh")
+    backoff_factor: float = Field(default=2.0, description="Delay multiplier for failed keywords")
+    
     # Safety & Human-like behavior
     join_delay_min: int = Field(default=30, description="Min seconds to wait before joining")
     join_delay_max: int = Field(default=30, description="Max seconds to wait before joining")

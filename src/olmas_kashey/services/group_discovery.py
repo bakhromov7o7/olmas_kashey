@@ -26,6 +26,7 @@ from olmas_kashey.services.query_plan import QueryPlanner
 from olmas_kashey.services.control_bot import TopicsChangedInterruption
 from olmas_kashey.services.smart_advisor import smart_advisor
 from olmas_kashey.services.link_crawler import LinkCrawlerService
+from olmas_kashey.services.evolution import keyword_evolution_service
 
 class GroupDiscoveryService:
     def __init__(self, client: OlmasClient, planner: QueryPlanner, bot: Optional[Any] = None):
@@ -111,6 +112,9 @@ class GroupDiscoveryService:
             
             # 2. Process Results
             processed_count = 0
+            new_results_count = 0
+            new_entities = []
+            
             async for session in get_db():
                 # Add run record to DB first to get ID? Or add later?
                 # Best to add later or add now and update. 
@@ -154,6 +158,8 @@ class GroupDiscoveryService:
                         session.add(new_entity)
                         await session.flush() # get ID
                         entity_id = new_entity.id
+                        new_entities.append(new_entity)
+                        new_results_count += 1
                         
                         # Emit Discovery Event
                         event = Event(
@@ -226,11 +232,18 @@ class GroupDiscoveryService:
                 # 3. Finalize Run Record
                 run_record.finished_at = datetime.now(timezone.utc)
                 run_record.results_count = processed_count
+                run_record.new_results_count = new_results_count
                 run_record.success = True
                 session.add(run_record)
                 await session.commit()
                 
-            logger.info(f"Finished keyword '{keyword}': {processed_count} groups found.")
+            # 4. Trigger Evolution if we found enough new groups
+            if new_results_count >= settings.discovery.evolution_threshold:
+                logger.info(f"Triggering keyword evolution: found {new_results_count} new groups.")
+                # We do this after commit/session close
+                asyncio.create_task(keyword_evolution_service.evolve_from_entities(new_entities))
+                
+            logger.info(f"Finished keyword '{keyword}': {processed_count} groups found ({new_results_count} new).")
 
         except TopicsChangedInterruption:
             # Re-raise to be caught by run() loop

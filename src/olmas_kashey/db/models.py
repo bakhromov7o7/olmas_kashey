@@ -66,6 +66,7 @@ class SearchRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     results_count: Mapped[int] = mapped_column(Integer, default=0)
+    new_results_count: Mapped[int] = mapped_column(Integer, default=0) # Groups not previously in DB
     success: Mapped[bool] = mapped_column(default=False)
     error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
