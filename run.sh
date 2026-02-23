@@ -71,7 +71,11 @@ case "$1" in
     logs)
         logs
         ;;
+    init-db)
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+        $VENV_PYTHON -m $APP_NAME init-db
+        ;;
     *)
-        echo "Foydalanish: $0 {start|stop|status|logs}"
+        echo "Foydalanish: $0 {start|stop|status|logs|init-db}"
         exit 1
 esac
