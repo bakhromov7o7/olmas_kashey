@@ -21,10 +21,11 @@ def init_db() -> None:
     """
     Initialize the database using Alembic migrations.
     """
+    import sys
     logger.info("Initializing database...")
     try:
-        # Running alembic upgrade head using subprocess
-        subprocess.run(["alembic", "upgrade", "head"], check=True)
+        # Use sys.executable to ensure we use the same python environment
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=True)
         logger.info("Database initialized successfully.")
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to initialize database: {e}")
