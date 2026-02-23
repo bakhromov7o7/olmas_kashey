@@ -113,7 +113,7 @@ class GroqSettings(BaseSettings):
 
 class GeminiSettings(BaseSettings):
     api_key: Optional[str] = Field(default=None, description="Google Gemini API Key")
-    model: str = Field(default="gemini-1.5-flash", description="Gemini Model")
+    model: str = Field(default="gemini-1.5-flash-latest", description="Gemini Model")
     max_tokens: int = Field(default=1024, description="Max tokens for response")
 
 class Settings(BaseSettings):
