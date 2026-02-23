@@ -111,6 +111,11 @@ class GroqSettings(BaseSettings):
     model: str = Field(default="llama-3.3-70b-versatile", description="GROQ Model")
     max_tokens: int = Field(default=1024, description="Max tokens for response")
 
+class GeminiSettings(BaseSettings):
+    api_key: Optional[str] = Field(default=None, description="Google Gemini API Key")
+    model: str = Field(default="gemini-1.5-flash", description="Gemini Model")
+    max_tokens: int = Field(default=1024, description="Max tokens for response")
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -130,6 +135,7 @@ class Settings(BaseSettings):
     service: ServiceSettings = Field(default_factory=ServiceSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
     groq: GroqSettings = Field(default_factory=GroqSettings)
+    gemini: GeminiSettings = Field(default_factory=GeminiSettings)
 
 
 settings = Settings()

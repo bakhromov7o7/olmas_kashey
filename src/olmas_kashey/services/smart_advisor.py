@@ -2,6 +2,7 @@ import json
 import random
 from typing import Optional
 from loguru import logger
+import google.generativeai as genai
 from groq import AsyncGroq
 from olmas_kashey.core.settings import settings
 
@@ -29,6 +30,15 @@ Output MUST be a valid JSON object. Do not include markdown formatting or explan
                 self.client = AsyncGroq(api_key=self.api_key)
             except Exception as e:
                 logger.error(f"Failed to initialize Groq client for SmartAdvisor: {e}")
+
+        # Gemini Setup
+        self.gemini_api_key = settings.gemini.api_key
+        self.gemini_model_name = settings.gemini.model
+        if self.gemini_api_key:
+            genai.configure(api_key=self.gemini_api_key)
+            self.gemini_model = genai.GenerativeModel(self.gemini_model_name)
+        else:
+            self.gemini_model = None
 
     async def get_floodwait_sleep(self, floodwait_seconds: int, context: Optional[dict] = None) -> float:
         """
@@ -132,26 +142,43 @@ Return JSON:
             return self._fallback_join_delay()
 
     async def _call_ai(self, user_prompt: str) -> Optional[dict]:
-        """Helper to call Groq API with failover."""
-        for model in [self.primary_model, self.fallback_model, settings.groq.model]:
+        """Helper to call AI with failover (Gemini then Groq)."""
+        # 1. Try Gemini first
+        if self.gemini_model:
             try:
-                response = await self.client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": self.SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    max_tokens=150,
-                    temperature=0.7,
-                    response_format={"type": "json_object"}
+                response = await self.gemini_model.generate_content_async(
+                    f"{self.SYSTEM_PROMPT}\n\nUser Request: {user_prompt}",
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json",
+                    )
                 )
-                
-                content = response.choices[0].message.content
-                if content:
-                    return json.loads(content)
+                import json
+                return json.loads(response.text)
             except Exception as e:
-                logger.info(f"SmartAdvisor API error with model {model}: {e}")
-                continue # Try next model
+                logger.info(f"SmartAdvisor Gemini error: {e}")
+
+        # 2. Try Groq models
+        if self.client:
+            for model in [self.primary_model, self.fallback_model, settings.groq.model]:
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": self.SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        max_tokens=150,
+                        temperature=0.7,
+                        response_format={"type": "json_object"}
+                    )
+                    
+                    content = response.choices[0].message.content
+                    if content:
+                        import json
+                        return json.loads(content)
+                except Exception as e:
+                    logger.info(f"SmartAdvisor Groq error with model {model}: {e}")
+                    continue # Try next model
         return None
 
     def _fallback_floodwait(self, floodwait_seconds: int) -> float:

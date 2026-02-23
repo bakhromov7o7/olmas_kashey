@@ -6,6 +6,7 @@ import asyncio
 from typing import List, Optional, Dict
 from loguru import logger
 
+import google.generativeai as genai
 from groq import AsyncGroq
 
 from olmas_kashey.core.settings import settings
@@ -53,52 +54,74 @@ Example for 'biznes':
                 self.client = AsyncGroq(api_key=self.api_key)
             except Exception as e:
                 logger.error(f"Failed to initialize Groq client: {e}")
+        
+        # Gemini Setup
+        self.gemini_api_key = settings.gemini.api_key
+        self.gemini_model_name = settings.gemini.model
+        if self.gemini_api_key:
+            genai.configure(api_key=self.gemini_api_key)
+            self.gemini_model = genai.GenerativeModel(self.gemini_model_name)
+        else:
+            self.gemini_model = None
     
     async def generate_keywords(self, topic: str = "education", count: int = 20) -> Dict[str, List[str]]:
         """
         Generate structured keywords and usernames for a specific topic.
         """
-        if not self.client:
-            return self._fallback_structured(topic)
-
         user_prompt = f"Generate {count} intense search terms for topic: '{topic}'. Use the required JSON format and max broadness."
 
-        models_to_try = [self.primary_model] + self.fallback_models
-        
-        for model in models_to_try:
+        # 1. Try Gemini first if available
+        if self.gemini_model:
             try:
-                response = await self.client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": self.SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    max_tokens=self.max_tokens,
-                    temperature=0.8,
-                    response_format={"type": "json_object"}
+                logger.info(f"Generating structured keywords using Gemini ({self.gemini_model_name})")
+                response = await self.gemini_model.generate_content_async(
+                    f"{self.SYSTEM_PROMPT}\n\nUser Request: {user_prompt}",
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json",
+                    )
                 )
-            
                 import json
-                content = response.choices[0].message.content
-                if not content:
-                    logger.warning(f"Empty response from {model}")
-                    continue
-                
-                data = json.loads(content)
-                result = {
+                data = json.loads(response.text)
+                return {
                     "keywords": [str(k).lower() for k in data.get("keywords", [])],
                     "usernames": [str(u).lower().replace(" ", "") for u in data.get("usernames", [])],
                     "variations": [str(v).lower() for v in data.get("variations", [])]
                 }
-                
-                logger.info(f"Generated structured keywords using {model}")
-                return result
-                
             except Exception as e:
-                logger.warning(f"Model {model} failed: {e}")
-                continue
+                logger.warning(f"Gemini failed for structured keywords: {e}")
+
+        # 2. Try Groq/Models fallback
+        if self.client:
+            models_to_try = [self.primary_model] + self.fallback_models
+            for model in models_to_try:
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": self.SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        max_tokens=self.max_tokens,
+                        temperature=0.8,
+                        response_format={"type": "json_object"}
+                    )
                 
-        logger.error(f"All models failed for structured keywords. Using fallback.")
+                    import json
+                    content = response.choices[0].message.content
+                    if not content:
+                        continue
+                    
+                    data = json.loads(content)
+                    return {
+                        "keywords": [str(k).lower() for k in data.get("keywords", [])],
+                        "usernames": [str(u).lower().replace(" ", "") for u in data.get("usernames", [])],
+                        "variations": [str(v).lower() for v in data.get("variations", [])]
+                    }
+                except Exception as e:
+                    logger.warning(f"Model {model} failed: {e}")
+                    continue
+                
+        logger.error(f"All AI models failed for structured keywords. Using fallback.")
         return self._fallback_structured(topic)
     
     def _fallback_structured(self, topic: str) -> Dict[str, List[str]]:
