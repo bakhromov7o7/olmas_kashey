@@ -107,7 +107,7 @@ class ProxySettings(BaseSettings):
         }
 
 class GroqSettings(BaseSettings):
-    api_key: str = Field(..., description="GROQ API Key")
+    api_key: Optional[str] = Field(default=None, description="GROQ API Key")
     model: str = Field(default="llama-3.3-70b-versatile", description="GROQ Model")
     max_tokens: int = Field(default=1024, description="Max tokens for response")
 

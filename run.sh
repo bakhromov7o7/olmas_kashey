@@ -75,6 +75,10 @@ case "$1" in
         export PYTHONPATH=$PYTHONPATH:$(pwd)/src
         $VENV_PYTHON -m $APP_NAME init-db
         ;;
+    setup)
+        echo "Kutubxonalarni o'rnatyapman..."
+        ./.venv/bin/pip install -e .
+        ;;
     *)
         echo "Foydalanish: $0 {start|stop|status|logs|init-db}"
         exit 1
