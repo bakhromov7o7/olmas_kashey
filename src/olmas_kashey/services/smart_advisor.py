@@ -34,11 +34,11 @@ Output MUST be a valid JSON object. Do not include markdown formatting or explan
         # Gemini Setup
         self.gemini_api_key = settings.gemini.api_key
         self.gemini_model_name = settings.gemini.model
+        self.gemini_fallbacks = ["gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-1.0-pro"]
         if self.gemini_api_key:
             genai.configure(api_key=self.gemini_api_key)
-            self.gemini_model = genai.GenerativeModel(self.gemini_model_name)
-        else:
-            self.gemini_model = None
+        
+        self.gemini_model = None
 
     async def get_floodwait_sleep(self, floodwait_seconds: int, context: Optional[dict] = None) -> float:
         """
@@ -143,19 +143,22 @@ Return JSON:
 
     async def _call_ai(self, user_prompt: str) -> Optional[dict]:
         """Helper to call AI with failover (Gemini then Groq)."""
-        # 1. Try Gemini first
-        if self.gemini_model:
-            try:
-                response = await self.gemini_model.generate_content_async(
-                    f"{self.SYSTEM_PROMPT}\n\nUser Request: {user_prompt}",
-                    generation_config=genai.GenerationConfig(
-                        response_mime_type="application/json",
+        # 1. Try Gemini first (with fallbacks)
+        if self.gemini_api_key:
+            for model_name in [self.gemini_model_name] + self.gemini_fallbacks:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    response = await model.generate_content_async(
+                        f"{self.SYSTEM_PROMPT}\n\nUser Request: {user_prompt}",
+                        generation_config=genai.GenerationConfig(
+                            response_mime_type="application/json",
+                        )
                     )
-                )
-                import json
-                return json.loads(response.text)
-            except Exception as e:
-                logger.info(f"SmartAdvisor Gemini error: {e}")
+                    import json
+                    return json.loads(response.text)
+                except Exception as e:
+                    logger.info(f"SmartAdvisor Gemini error with {model_name}: {e}")
+                    continue
 
         # 2. Try Groq models
         if self.client:

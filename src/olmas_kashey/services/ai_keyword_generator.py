@@ -58,9 +58,10 @@ Example for 'biznes':
         # Gemini Setup
         self.gemini_api_key = settings.gemini.api_key
         self.gemini_model_name = settings.gemini.model
+        self.gemini_fallbacks = ["gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-1.0-pro"]
         if self.gemini_api_key:
             genai.configure(api_key=self.gemini_api_key)
-            self.gemini_model = genai.GenerativeModel(self.gemini_model_name)
+            self.gemini_model = None # Initialized lazily or per request to support fallbacks
         else:
             self.gemini_model = None
     
@@ -70,25 +71,28 @@ Example for 'biznes':
         """
         user_prompt = f"Generate {count} intense search terms for topic: '{topic}'. Use the required JSON format and max broadness."
 
-        # 1. Try Gemini first if available
-        if self.gemini_model:
-            try:
-                logger.info(f"Generating structured keywords using Gemini ({self.gemini_model_name})")
-                response = await self.gemini_model.generate_content_async(
-                    f"{self.SYSTEM_PROMPT}\n\nUser Request: {user_prompt}",
-                    generation_config=genai.GenerationConfig(
-                        response_mime_type="application/json",
+        # 1. Try Gemini first if available (with fallbacks)
+        if self.gemini_api_key:
+            for model_name in [self.gemini_model_name] + self.gemini_fallbacks:
+                try:
+                    logger.info(f"Generating structured keywords using Gemini ({model_name})")
+                    model = genai.GenerativeModel(model_name)
+                    response = await model.generate_content_async(
+                        f"{self.SYSTEM_PROMPT}\n\nUser Request: {user_prompt}",
+                        generation_config=genai.GenerationConfig(
+                            response_mime_type="application/json",
+                        )
                     )
-                )
-                import json
-                data = json.loads(response.text)
-                return {
-                    "keywords": [str(k).lower() for k in data.get("keywords", [])],
-                    "usernames": [str(u).lower().replace(" ", "") for u in data.get("usernames", [])],
-                    "variations": [str(v).lower() for v in data.get("variations", [])]
-                }
-            except Exception as e:
-                logger.warning(f"Gemini failed for structured keywords: {e}")
+                    import json
+                    data = json.loads(response.text)
+                    return {
+                        "keywords": [str(k).lower() for k in data.get("keywords", [])],
+                        "usernames": [str(u).lower().replace(" ", "") for u in data.get("usernames", [])],
+                        "variations": [str(v).lower() for v in data.get("variations", [])]
+                    }
+                except Exception as e:
+                    logger.warning(f"Gemini model {model_name} failed: {e}")
+                    continue # Try next Gemini model
 
         # 2. Try Groq/Models fallback
         if self.client:
