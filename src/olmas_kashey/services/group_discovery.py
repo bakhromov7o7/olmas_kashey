@@ -222,6 +222,11 @@ class GroupDiscoveryService:
                                 await self.bot.notify_join(classified.title or classified.username, classified.username)
                             
                             # Emit join event
+                            join_event = Event(
+                                entity_id=entity_id,
+                                type="auto_joined",
+                                payload={"source_keyword": keyword}
+                            )
                             session.add(join_event)
 
                             # 🚀 Recursive Discovery: Crawl newly joined group for more links
