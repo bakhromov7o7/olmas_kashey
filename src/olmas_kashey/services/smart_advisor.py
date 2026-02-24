@@ -70,9 +70,9 @@ CRITICAL SAFETY RULES:
 1. **Never** just add seconds. Adding 10-60 seconds is USELESS and looks like a robot waiting for a timer.
 2. **Think like a human**: If you were blocked for 15 minutes, you wouldn't come back in 16 minutes. You would wait an hour or two.
 3. **MANDATORY OVERHEAD**: 
-   - For any penalty > 120s, you MUST add at least 30 to 120 EXTRA MINUTES of rest.
-   - For penalties > 600s, recommend staying offline for 2-6 hours.
-   - If 'ban_count' is > 0 or health is poor, stay offline for 12-24 hours.
+   - For any penalty > 120s, you MUST add at least 10 to 30 EXTRA MINUTES of rest.
+   - For penalties > 600s, recommend staying offline for 1-3 hours.
+   - If 'ban_count' is > 2 or health is poor, stay offline for 6-12 hours.
 
 Analyze the metrics and recommend a TOTAL sleep duration (Penalty + Cooldown).
 The user wants the bot to "shut down" for a safe duration determined by YOU.
@@ -88,12 +88,11 @@ Return JSON:
             if response and "total_off_time_seconds" in response:
                 recommended = float(response["total_off_time_seconds"])
                 
-                # 🛡️ AGGRESSIVE SAFETY FLOOR: 
-                # Avoid "The Robotic Interval": if penalty > 2 mins, add at least 30 mins (1800s) extra.
+                # Reduced safety floor for speed
                 if floodwait_seconds > 120:
-                    min_safe = floodwait_seconds + 1800
+                    min_safe = floodwait_seconds + 300 # Add only 5 mins minimum
                     if recommended < min_safe:
-                        logger.warning(f"SmartAdvisor AI recommended too little ({recommended:.1f}s). Enforcing massive safety floor: {min_safe:.1f}s")
+                        logger.warning(f"SmartAdvisor AI recommended too little ({recommended:.1f}s). Enforcing safety floor: {min_safe:.1f}s")
                         recommended = min_safe
                 else:
                     # For short waits, at least penalty + 2 mins
@@ -125,7 +124,7 @@ Return JSON:
 We are about to join a new Telegram group. 
 {context_str}
 To avoid triggering spam filters, we need a realistic human-like delay before clicking 'join'.
-Calculate a random delay in seconds (can be a float) between 10 and 45 seconds.
+Calculate a random delay in seconds (can be a float) between 3 and 10 seconds.
 
 Return JSON:
 {{
@@ -160,9 +159,9 @@ We just finished a discovery batch.
 {context_str}
 
 YOUR MISSION: Decide how long the bot should rest before starting the NEXT keyword/batch.
-Think like a human: Don't just do fixed intervals. Sometimes wait 10 mins, sometimes 45 mins. 
-If 'is_healthy' is false or joins are high today, be very conservative (30-120 mins).
-If everything is clean, 5-15 mins is typical for a human.
+Think like a human but be efficient: Sometimes wait 2 mins, sometimes 8 mins. 
+If 'is_healthy' is false or joins are high today, be conservative (10-30 mins).
+If everything is clean, 2-5 mins is typical for a fast human.
 
 Return JSON:
 {{
