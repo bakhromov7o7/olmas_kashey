@@ -103,6 +103,7 @@ async def _monitor() -> None:
     from olmas_kashey.services.group_discovery import GroupDiscoveryService
     from olmas_kashey.services.query_plan import QueryPlanner
     from olmas_kashey.services.control_bot import ControlBotService
+    from olmas_kashey.services.broadcast import BroadcastService
     
     # 1. Setup
     sig_handler = SignalHandler()
@@ -124,9 +125,11 @@ async def _monitor() -> None:
     membership_monitor = MembershipMonitor(client)
     bot_service.membership_monitor = membership_monitor
     health_monitor = HealthMonitor(client)
+    broadcast_service = BroadcastService(client, bot=bot_service)
     
     typer.secho("🏗️  Olmas Kashey Automation Engine Starting...", fg=typer.colors.CYAN, bold=True)
     await client.start()
+    await broadcast_service.start()
     
     try:
         iteration = 1
@@ -181,6 +184,7 @@ async def _monitor() -> None:
         if bot_task:
             await bot_service.stop()
             bot_task.cancel()
+        await broadcast_service.stop()
         await client.stop()
         typer.echo("🔌 Disconnected.")
 

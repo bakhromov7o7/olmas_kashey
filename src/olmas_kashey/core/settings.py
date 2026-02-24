@@ -76,6 +76,11 @@ class DiscoverySettings(BaseSettings):
     # Allowlist
     allowed_topics: List[str] = Field(default=["ielts", "uzbekistan", "tashkent"], description="Whitelisted topics/keywords")
 
+class BroadcastSettings(BaseSettings):
+    enabled: bool = Field(default=False, description="Enable periodic advertisement broadcasting")
+    message: str = Field(default="", description="The advertisement message to broadcast")
+    interval_minutes: int = Field(default=5, ge=1, description="Interval between broadcast rounds in minutes")
+
 class ServiceSettings(BaseSettings):
     scheduler_interval_seconds: int = Field(default=1800, ge=10, description="Scheduler interval in seconds")
     enable_auto_join: bool = Field(default=True, description="Whether to auto-join classified groups")
@@ -136,6 +141,7 @@ class Settings(BaseSettings):
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     discovery: DiscoverySettings = Field(default_factory=DiscoverySettings)
     service: ServiceSettings = Field(default_factory=ServiceSettings)
+    broadcast: BroadcastSettings = Field(default_factory=BroadcastSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
     groq: GroqSettings = Field(default_factory=GroqSettings)
 

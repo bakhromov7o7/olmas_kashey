@@ -274,6 +274,33 @@ class ControlBotService:
             await event.respond(msg)
             raise events.StopPropagation
 
+        @self.bot_client.on(events.NewMessage(pattern=r'^/reklama(@\w+)?\s+(.+)'))
+        async def reklama_handler(event):
+            if not await self._check_auth(event):
+                return
+            try:
+                msg = event.pattern_match.group(2)
+                settings.broadcast.message = msg
+                settings.broadcast.enabled = True
+                self._update_env_file("BROADCAST__MESSAGE", msg)
+                self._update_env_file("BROADCAST__ENABLED", "true")
+                
+                await event.respond(f"✅ **Reklama qabul qilindi va yoqildi.**\n\n"
+                                    f"Matn: {msg}\n"
+                                    f"Interval: {settings.broadcast.interval_minutes} minut")
+            except Exception as e:
+                await event.respond(f"❌ Xatolik: {e}")
+            raise events.StopPropagation
+
+        @self.bot_client.on(events.NewMessage(pattern=r'^/stop_reklama(@\w+)?(\s|$)'))
+        async def stop_reklama_handler(event):
+            if not await self._check_auth(event):
+                return
+            settings.broadcast.enabled = False
+            self._update_env_file("BROADCAST__ENABLED", "false")
+            await event.respond("🛑 **Reklama to'xtatildi.**")
+            raise events.StopPropagation
+
         @self.bot_client.on(events.NewMessage(pattern=r'^/check_groups(@\w+)?(\s|$)'))
         async def check_groups_handler(event):
             if not await self._check_auth(event):
@@ -429,6 +456,7 @@ class ControlBotService:
                 f"⏱️ Interval: {settings.discovery.batch_interval_seconds}s\n"
                 f"🔄 Cycle: {settings.service.scheduler_interval_seconds}s\n"
                 f"📑 Topiclar: {', '.join(settings.discovery.allowed_topics)}\n"
+                f"📢 Reklama: {'✅' if settings.broadcast.enabled else '❌'} ({settings.broadcast.interval_minutes}m)\n"
             )
 
             # Countdown timers
