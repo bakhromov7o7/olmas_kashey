@@ -80,6 +80,7 @@ class ServiceSettings(BaseSettings):
     scheduler_interval_seconds: int = Field(default=1800, ge=10, description="Scheduler interval in seconds")
     enable_auto_join: bool = Field(default=True, description="Whether to auto-join classified groups")
     smart_mode: bool = Field(default=True, description="Whether Smart Mode AI is active")
+    eco_mode: bool = Field(default=False, description="Whether Eco Mode is active")
 
 class ProxySettings(BaseSettings):
     url: Optional[AnyUrl] = Field(default=None, description="Proxy URL for Telegram client")
