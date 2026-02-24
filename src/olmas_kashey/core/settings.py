@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List, Optional
 from pydantic import Field, AnyUrl, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from loguru import logger
 from enum import Enum
 
 class LogLevel(str, Enum):
