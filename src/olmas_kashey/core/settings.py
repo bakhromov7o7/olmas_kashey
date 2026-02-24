@@ -89,18 +89,20 @@ class ProxySettings(BaseSettings):
             return None
         
         # Telethon/python-socks expected format
-        proxy_type = self.url.scheme
-        if "socks5" in proxy_type:
+        scheme = str(self.url.scheme).lower()
+        if "socks5" in scheme:
             ptype = "socks5"
-        elif "socks4" in proxy_type:
+        elif "socks4" in scheme:
             ptype = "socks4"
         else:
             ptype = "http"
             
+        logger.info(f"Formatting proxy for Telegram: {ptype}://{self.url.host}:{self.url.port}")
+            
         return {
             'proxy_type': ptype,
-            'addr': self.url.host,
-            'port': self.url.port,
+            'addr': str(self.url.host),
+            'port': int(self.url.port or 80),
             'username': self.url.username,
             'password': self.url.password,
             'rdns': True
