@@ -89,14 +89,16 @@ class ProxySettings(BaseSettings):
         if not self.enabled or not self.url:
             return None
         
-        # Telethon/python-socks expected format
         scheme = str(self.url.scheme).lower()
+        rdns = True
+        
         if "socks5" in scheme:
             ptype = "socks5"
         elif "socks4" in scheme:
             ptype = "socks4"
         else:
             ptype = "http"
+            rdns = False # HTTP proxies don't use rdns
             
         auth_info = "with auth" if self.url.username and self.url.password else "no auth"
         logger.info(f"Formatting proxy for Telegram: {ptype}://{self.url.host}:{self.url.port} ({auth_info})")
@@ -107,7 +109,7 @@ class ProxySettings(BaseSettings):
             'port': int(self.url.port or 80),
             'username': self.url.username,
             'password': self.url.password,
-            'rdns': True
+            'rdns': rdns
         }
 
 class GroqSettings(BaseSettings):
