@@ -62,11 +62,28 @@ class GroupDiscoveryService:
             
             # Add batch delay between iterations to be more human-like
             if i < iterations - 1:
-                delay = settings.discovery.batch_interval_seconds
-                if self.bot and getattr(self.bot, 'eco_mode', False):
-                    delay = max(120, delay)
+                # Calculate delay
+                context = {}
+                if self.bot and hasattr(self.bot, 'get_health_context'):
+                    context = await self.bot.get_health_context()
+
+                if self.bot and getattr(self.bot, 'smart_mode', False):
+                    # Smart Mode: AI decides next rest and potential decoy action
+                    decision = await smart_advisor.get_behavior_decision(context=context)
+                    
+                    if decision.get("action") == "browse":
+                        logger.info(f"Smart Mode Decision: {decision.get('reasoning', 'Simulating browsing')}")
+                        await self.client.simulate_browsing()
+                    elif decision.get("action") == "idle":
+                        logger.info(f"Smart Mode Decision: {decision.get('reasoning', 'Idling')}")
+                    
+                    delay = await smart_advisor.get_iteration_delay(context=context)
+                else:
+                    delay = settings.discovery.batch_interval_seconds
+                    if self.bot and getattr(self.bot, 'eco_mode', False):
+                        delay = max(120, delay)
                 
-                logger.debug(f"Iteration {i+1} complete. Waiting {delay}s before next batch...")
+                logger.debug(f"Iteration {i+1} complete. Waiting {delay/60:.1f}m before next batch...")
                 
                 if sig_handler or self.bot:
                     end_time = asyncio.get_running_loop().time() + delay
@@ -203,7 +220,8 @@ class GroupDiscoveryService:
                         try:
                             # Dynamic AI delay vs Static delay
                             if self.bot and getattr(self.bot, 'smart_mode', False):
-                                delay = await smart_advisor.get_join_delay()
+                                context = await self.bot.get_health_context()
+                                delay = await smart_advisor.get_join_delay(context=context)
                                 logger.info(f"Smart Mode active: Waiting {delay:.1f}s before joining {classified.username or classified.tg_id}")
                                 await asyncio.sleep(delay)
                             else:

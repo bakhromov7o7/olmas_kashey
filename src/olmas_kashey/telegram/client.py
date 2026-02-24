@@ -97,6 +97,19 @@ class OlmasClient:
         attempt = 0
         while attempt < max_attempts:
             try:
+                # Smart Mode: Add AI-driven action delay or jitter
+                if self.bot and getattr(self.bot, 'smart_mode', False):
+                    # We don't want to over-call AI for resolving entities if we have a lot
+                    if method != "resolve" or random.random() < 0.2:
+                        context = {}
+                        if hasattr(self.bot, 'get_health_context'):
+                            context = await self.bot.get_health_context()
+                        
+                        wait = await smart_advisor.get_action_delay(method, context=context)
+                        if wait > 0:
+                            logger.debug(f"Smart Mode: Delaying action '{method}' by {wait:.1f}s")
+                            await asyncio.sleep(wait)
+
                 result = await self._limiter.run(method, fn)
                 self._flood_backoff_level = 0  # Reset on success
                 return result
@@ -273,6 +286,38 @@ class OlmasClient:
         ]
         logger.info(f"Found {len(groups)} joined groups on Telegram.")
         return groups
+
+    async def simulate_browsing(self) -> None:
+        """
+        Simulates human-like browsing behavior: listing dialogs, reading messages, etc.
+        """
+        if not self.client or not self.is_connected():
+            return
+
+        logger.info("🎨 Simulating human browsing behavior...")
+        try:
+            # 1. Get dialogs (most basic 'browsing' action)
+            async def _do_dialogs():
+                return await self.client.get_dialogs(limit=random.randint(5, 15))
+            
+            dialogs = await self._call("dialogs", _do_dialogs, (), {})
+            
+            if dialogs:
+                # 2. Pick a random dialog and 'read' it
+                target = random.choice(dialogs)
+                logger.debug(f"Browsing: Reading messages in '{target.name}'")
+                
+                async def _do_messages():
+                    return await self.client.get_messages(target.entity, limit=random.randint(3, 8))
+                
+                await self._call("message", _do_messages, (), {})
+                
+                # 3. Random small wait to simulate reading
+                await asyncio.sleep(random.uniform(2.0, 7.0))
+                
+            logger.info("🎨 Browsing simulation complete.")
+        except Exception as e:
+            logger.warning(f"Browsing simulation failed: {e}")
 
     def _normalize_entity_key(self, entity: Union[str, int]) -> str:
         if isinstance(entity, str):

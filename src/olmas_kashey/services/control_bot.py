@@ -485,12 +485,23 @@ class ControlBotService:
                     monitor = HealthMonitor(self.client)
                     is_healthy = await monitor.check_health()
                 
+                search_count = (await session.execute(select(func.count(SearchRun.id)).where(
+                    SearchRun.started_at >= today_start_utc
+                ))).scalar() or 0
+                
+                results_found = (await session.execute(select(func.sum(SearchRun.results_count)).where(
+                    SearchRun.started_at >= today_start_utc
+                ))).scalar() or 0
+                
                 return {
                     "joined_today": joined_today,
                     "ban_count": ban_count,
                     "is_healthy": is_healthy,
                     "eco_mode": getattr(self, 'eco_mode', False),
-                    "smart_mode": getattr(self, 'smart_mode', False)
+                    "smart_mode": getattr(self, 'smart_mode', False),
+                    "search_count_today": search_count,
+                    "results_found_today": results_found,
+                    "local_time": datetime.now().strftime("%H:%M")
                 }
         except Exception as e:
             logger.error(f"Failed to get health context: {e}")
