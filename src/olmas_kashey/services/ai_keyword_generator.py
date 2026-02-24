@@ -5,8 +5,8 @@ Generates smart search keywords for Telegram group discovery with fuzzy/partial 
 import asyncio
 from typing import List, Optional, Dict
 from loguru import logger
+import httpx
 
-import google.generativeai as genai
 from groq import AsyncGroq
 
 from olmas_kashey.core.settings import settings
@@ -51,19 +51,20 @@ Example for 'biznes':
         self.client = None
         if self.api_key:
             try:
-                self.client = AsyncGroq(api_key=self.api_key)
+                # Proxy support for Groq
+                proxy_url = str(settings.proxy.url) if settings.proxy.enabled and settings.proxy.url else None
+                client_kwargs = {"api_key": self.api_key}
+                
+                if proxy_url:
+                    logger.info(f"Using proxy for Groq: {proxy_url}")
+                    client_kwargs["http_client"] = httpx.AsyncClient(
+                        proxies=proxy_url,
+                        timeout=30.0
+                    )
+                
+                self.client = AsyncGroq(**client_kwargs)
             except Exception as e:
                 logger.error(f"Failed to initialize Groq client: {e}")
-        
-        # Gemini Setup
-        self.gemini_api_key = settings.gemini.api_key
-        self.gemini_model_name = settings.gemini.model
-        self.gemini_fallbacks = ["gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-1.0-pro"]
-        if self.gemini_api_key:
-            genai.configure(api_key=self.gemini_api_key)
-            self.gemini_model = None # Initialized lazily or per request to support fallbacks
-        else:
-            self.gemini_model = None
     
     async def generate_keywords(self, topic: str = "education", count: int = 20) -> Dict[str, List[str]]:
         """
@@ -71,34 +72,12 @@ Example for 'biznes':
         """
         user_prompt = f"Generate {count} intense search terms for topic: '{topic}'. Use the required JSON format and max broadness."
 
-        # 1. Try Gemini first if available (with fallbacks)
-        if self.gemini_api_key:
-            for model_name in [self.gemini_model_name] + self.gemini_fallbacks:
-                try:
-                    logger.info(f"Generating structured keywords using Gemini ({model_name})")
-                    model = genai.GenerativeModel(model_name)
-                    response = await model.generate_content_async(
-                        f"{self.SYSTEM_PROMPT}\n\nUser Request: {user_prompt}",
-                        generation_config=genai.GenerationConfig(
-                            response_mime_type="application/json",
-                        )
-                    )
-                    import json
-                    data = json.loads(response.text)
-                    return {
-                        "keywords": [str(k).lower() for k in data.get("keywords", [])],
-                        "usernames": [str(u).lower().replace(" ", "") for u in data.get("usernames", [])],
-                        "variations": [str(v).lower() for v in data.get("variations", [])]
-                    }
-                except Exception as e:
-                    logger.warning(f"Gemini model {model_name} failed: {e}")
-                    continue # Try next Gemini model
-
-        # 2. Try Groq/Models fallback
+        # Try Groq/Models
         if self.client:
             models_to_try = [self.primary_model] + self.fallback_models
             for model in models_to_try:
                 try:
+                    logger.info(f"Generating structured keywords using Groq ({model})")
                     response = await self.client.chat.completions.create(
                         model=model,
                         messages=[
