@@ -40,8 +40,18 @@ class BroadcastService:
         while self.is_running:
             try:
                 if settings.broadcast.enabled and settings.broadcast.message:
-                    logger.info("Starting a new broadcast round...")
+                    logger.info(f"Starting broadcast round. Message: '{settings.broadcast.message[:30]}...'")
+                    if self.bot and self.bot.bot_client:
+                        try:
+                            await self.bot.bot_client.send_message(
+                                settings.telegram.authorized_user_id,
+                                f"📢 **Broadcast boshlandi...**\nMatn: {settings.broadcast.message[:100]}..."
+                            )
+                        except Exception: pass
                     await self._broadcast_round()
+                else:
+                    reason = "disabled" if not settings.broadcast.enabled else "empty message"
+                    logger.debug(f"Broadcast round skipped: {reason}")
                 
                 # Wait for the next interval
                 interval_seconds = settings.broadcast.interval_minutes * 60
@@ -49,6 +59,13 @@ class BroadcastService:
                 interval_seconds += random.uniform(-30, 30)
                 
                 logger.info(f"Broadcast round finished. Waiting {settings.broadcast.interval_minutes}m for next round.")
+                if self.bot and self.bot.bot_client:
+                    try:
+                        await self.bot.bot_client.send_message(
+                            settings.telegram.authorized_user_id,
+                            f"✅ **Broadcast raundi yakunlandi.**\nNavbatdagisi {settings.broadcast.interval_minutes} minutdan keyin."
+                        )
+                    except Exception: pass
                 
                 # Sleep in increments to remain responsive to stop/pause
                 end_time = asyncio.get_running_loop().time() + interval_seconds
@@ -74,7 +91,7 @@ class BroadcastService:
             entities = result.scalars().all()
             
             if not entities:
-                logger.info("No joined groups found for broadcasting.")
+                logger.warning("No joined groups found in database. Did you run './run_discovery sync-groups'?")
                 return
 
             logger.info(f"Broadcasting message to {len(entities)} groups.")
@@ -91,6 +108,10 @@ class BroadcastService:
                     logger.info(f"Sending broadcast to {target}...")
                     
                     await self.client.send_message(target, settings.broadcast.message)
+                    logger.info(f"Successfully sent broadcast to {target}")
+                    
+                    # Optionally notify user for each group (might be too spammy if 100+ groups)
+                    # For now, let's only log it or notify if group count is small.
                     
                     # Add a random delay between messages to look human
                     # If Smart Mode is on, OlmasClient._call already adds action delays, 

@@ -75,6 +75,14 @@ case "$1" in
         export PYTHONPATH=$PYTHONPATH:$(pwd)/src
         $VENV_PYTHON -m $APP_NAME init-db
         ;;
+    sync-groups)
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+        $VENV_PYTHON -m $APP_NAME sync-groups
+        ;;
+    monitor-joined)
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+        $VENV_PYTHON -m $APP_NAME run-monitor
+        ;;
     setup)
         echo "Kutubxonalarni o'rnatyapman..."
         ./.venv/bin/pip install -e .
