@@ -58,7 +58,7 @@ Example for 'biznes':
                 if proxy_url:
                     logger.info(f"Using proxy for Groq: {proxy_url}")
                     client_kwargs["http_client"] = httpx.AsyncClient(
-                        proxies=proxy_url,
+                        proxy=proxy_url,
                         timeout=30.0
                     )
                 
