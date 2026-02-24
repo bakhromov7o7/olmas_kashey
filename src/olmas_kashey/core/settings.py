@@ -98,7 +98,8 @@ class ProxySettings(BaseSettings):
         else:
             ptype = "http"
             
-        logger.info(f"Formatting proxy for Telegram: {ptype}://{self.url.host}:{self.url.port}")
+        auth_info = "with auth" if self.url.username and self.url.password else "no auth"
+        logger.info(f"Formatting proxy for Telegram: {ptype}://{self.url.host}:{self.url.port} ({auth_info})")
             
         return {
             'proxy_type': ptype,
